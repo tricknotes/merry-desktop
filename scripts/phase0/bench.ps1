@@ -35,7 +35,8 @@ function Invoke-Timed([string]$Name, [scriptblock]$Block) {
   Write-Host "::group::$Candidate run $Run - $Name"
   $sw = [Diagnostics.Stopwatch]::StartNew()
   try {
-    & $Block
+    # Send the build output to the host so it is not returned along with the elapsed time.
+    & $Block | Out-Host
   } finally {
     $sw.Stop()
     Write-Host "::endgroup::"
@@ -168,5 +169,7 @@ $result = [ordered]@{
   fileCount = @($files).Count
   versions = $versions
 }
+$outDir = Split-Path -Parent $OutFile
+if ($outDir) { New-Item -ItemType Directory -Force $outDir | Out-Null }
 $result | ConvertTo-Json -Depth 4 | Set-Content -Path $OutFile
 Get-Content $OutFile

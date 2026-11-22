@@ -62,8 +62,8 @@ jobs:
           -OutFile results/bench-${{ matrix.candidate }}-${{ matrix.run }}.json
           -ArtifactDir app/${{ matrix.candidate }}
 
-      # Reference only: the runner is not the target PC. The real number comes from a Windows 11 machine.
-      - name: Measure idle memory (reference)
+      # The runner is not the target PC; read the numbers as relative differences between candidates.
+      - name: Measure idle memory
         continue-on-error: true
         shell: pwsh
         run: |
