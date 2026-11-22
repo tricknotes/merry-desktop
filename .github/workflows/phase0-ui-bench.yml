@@ -9,6 +9,7 @@ on:
     paths:
       - "spikes/**"
       - "scripts/phase0/**"
+      - "!scripts/phase0/wsl2/**"
       - ".github/workflows/phase0-ui-bench.yml"
 
 permissions:

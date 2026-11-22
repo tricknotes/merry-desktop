@@ -1,0 +1,43 @@
+# Static checks and unit tests for the phase 0 WSL2 backend scripts.
+# The scripts themselves need WSL2, which hosted runners do not provide.
+name: phase0-wsl2-scripts
+
+on:
+  pull_request:
+    paths:
+      - "scripts/phase0/wsl2/**"
+      - ".github/workflows/phase0-wsl2-scripts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/phase0/wsl2/**"
+      - ".github/workflows/phase0-wsl2-scripts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: shellcheck
+        run: shellcheck --shell=sh scripts/phase0/wsl2/*.sh
+
+  powershell:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Parse (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $failed = 0
+          foreach ($file in Get-ChildItem scripts/phase0/wsl2/*.ps1) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { $failed++; $errors | ForEach-Object { "$($file.Name):$($_.Extent.StartLineNumber): $($_.Message)" } }
+          }
+          if ($failed) { exit 1 }
+      - name: Unit tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./scripts/phase0/wsl2/host-network.tests.ps1

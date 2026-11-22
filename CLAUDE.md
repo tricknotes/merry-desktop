@@ -12,8 +12,9 @@ Docker実行環境を社内配布するための、自作デスクトップア�
 
 ## 現在地
 
-フェーズ0(技術検証)の途中。
-0-2 は完了し、UI実装技術は Go + Wails v3 に決まった(`docs/phase0-ui-comparison.md`)。次は 0-3(Windowsバックエンドの検証)。
+フェーズ0(技術検証)の終盤。
+0-2 は完了し、UI実装技術は Go + Wails v3 に決まった(`docs/phase0-ui-comparison.md`)。
+0-3 は、VPN 接続中の疎通と Windows 版 `docker.exe` での確認を除いて検証した(`docs/phase0-wsl2-backend.md`)。この2つは人間の確認待ち。
 
 ## 最初のタスク: フェーズ0
 
@@ -49,7 +50,7 @@ Docker実行環境を社内配布するための、自作デスクトップア�
 結果は `docs/phase0-ui-comparison.md` に表でまとめ、推奨案と理由を書く。
 **どれを採用するかは人間が決める。推奨を出したら実装を進めずに判断を待つこと。**
 
-### 0-3. Windowsバックエンドの検証
+### 0-3. Windowsバックエンドの検証(人間の確認待ちを除き完了)
 
 - WSL2専用ディストリを自動で作る手順を確立する(rootfsのインポート、Docker Engineの導入、起動時の自動開始)。
 - ホストの `docker` CLIからそのEngineに接続できることを確認する(docker context)。

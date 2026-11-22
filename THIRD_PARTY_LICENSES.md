@@ -41,3 +41,25 @@ MPL-2.0 は lightningcss(Vite が使うCSS処理)で、ビルド時だけ使う�
 - Electron の配布物に入る Chromium、FFmpeg などの表記。Electron は `LICENSES.chromium.html` を同梱しており、
   FFmpeg は LGPL-2.1 でビルドされている。Electron を採用する場合は、表記の方法をあらためて確認する。
 - WebView2 Runtime(Tauri と Wails が使う)は Windows の標準コンポーネントで、配布物には含めない。
+
+## フェーズ0 WSL2 バックエンドの検証(`scripts/phase0/wsl2/`)
+
+スクリプトが構築時にダウンロードして、Engine 用のディストリに入れるもの。リポジトリには含めていない。
+
+| ソフトウェア | 版 | ライセンス | 入り方 |
+| --- | --- | --- | --- |
+| Alpine Linux minirootfs | 3.24.4 | 構成物ごとに異なる。musl は MIT、BusyBox は GPL-2.0 など | ディストリのもと |
+| Docker Engine 静的バイナリ(dockerd、containerd、runc、docker CLI ほか) | 29.10.0 | Apache-2.0(docker-init の tini は MIT) | `/usr/local/bin` に配置 |
+| Docker Compose | v5.8.0 | Apache-2.0 | CLI プラグインとして配置 |
+| ca-certificates、curl | Alpine 3.24 のパッケージ | MPL-2.0 / curl ライセンス(MIT 系) | apk で導入 |
+| iptables | Alpine 3.24 のパッケージ | GPL-2.0 | apk で導入(dockerd が使う) |
+| socat | Alpine 3.24 のパッケージ | GPL-2.0 | apk で導入(名前付きパイプの中継が使う) |
+
+### 要確認: VM の中の GPL のソフトウェア
+
+BusyBox、iptables、socat は GPL-2.0。本アプリのコードとはリンクせず、VM の中で別のプログラムとして動く。
+WSL のディストリ(Linux)を使う以上、GPL のソフトウェアを含まない構成は現実的でない。
+Rancher Desktop も同じく Alpine をもとにしたディストリを配布している。
+
+製品で rootfs を同梱して配布する場合は、GPL のソースコードの提供方法(Alpine のソースへの案内など)を決める必要がある。
+採否の判断はフェーズ1の配布設計で行う。socat は、フェーズ1で中継を Go で作り直せば不要にできる見込み。
