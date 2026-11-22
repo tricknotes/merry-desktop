@@ -1,0 +1,119 @@
+# Phase 0: build and measure the three UI spikes on Windows.
+# See docs/phase0-ui-comparison.md for how the numbers are used.
+name: phase0-ui-bench
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["phase0/**"]
+    paths:
+      - "spikes/**"
+      - "scripts/phase0/**"
+      - ".github/workflows/phase0-ui-bench.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase0-ui-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "26.13.1"
+  GO_VERSION: "1.27.4"
+  RUST_VERSION: "1.100.0"
+
+jobs:
+  bench:
+    name: ${{ matrix.candidate }} (run ${{ matrix.run }})
+    runs-on: windows-2025
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [tauri, electron, wails]
+        run: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # No dependency caching on purpose: the clean build must start from empty caches.
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - if: matrix.candidate == 'wails'
+        uses: actions/setup-go@v7.1.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - if: matrix.candidate == 'tauri'
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
+
+      - name: Measure build
+        shell: pwsh
+        run: >
+          ./scripts/phase0/bench.ps1
+          -Candidate ${{ matrix.candidate }}
+          -Run ${{ matrix.run }}
+          -OutFile results/bench-${{ matrix.candidate }}-${{ matrix.run }}.json
+          -ArtifactDir app/${{ matrix.candidate }}
+
+      # The runner is not the target PC; read the numbers as relative differences between candidates.
+      - name: Measure idle memory
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $exe = @{
+            tauri    = "app/tauri/spike-tauri.exe"
+            electron = "app/electron/win-unpacked/SpikeElectron.exe"
+            wails    = "app/wails/SpikeWails.exe"
+          }["${{ matrix.candidate }}"]
+          ./scripts/phase0/measure-memory.ps1 -Exe $exe -Label ${{ matrix.candidate }} -IdleSeconds 300 `
+            -OutFile results/memory-${{ matrix.candidate }}-${{ matrix.run }}.json
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: results-${{ matrix.candidate }}-${{ matrix.run }}
+          path: results/
+
+      # Lockfiles produced by the clean build (Cargo.lock, go.sum) so they can be committed later.
+      - if: matrix.run == 1
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lockfiles-${{ matrix.candidate }}
+          if-no-files-found: ignore
+          path: |
+            spikes/tauri/src-tauri/Cargo.lock
+            spikes/wails/go.sum
+
+      - if: matrix.run == 1
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: app-${{ matrix.candidate }}
+          path: app/${{ matrix.candidate }}/
+
+  summary:
+    needs: bench
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: results-*
+          path: results
+      - name: Summarize
+        run: |
+          node scripts/phase0/summarize.mjs results | tee summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: summary
+          path: summary.md
