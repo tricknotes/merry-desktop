@@ -1,0 +1,41 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 16px 20px;
+}
+
+h1 {
+  font-size: 1.2rem;
+  margin: 0 0 12px;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+  max-width: 280px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+}
+
+input {
+  font: inherit;
+  padding: 4px 6px;
+}
+
+button {
+  font: inherit;
+  justify-self: start;
+  padding: 4px 16px;
+}
+
+#status[data-status="stopped"] { color: gray; }
+#status[data-status="starting"] { color: darkorange; }
+#status[data-status="running"] { color: green; }
+#status[data-status="error"] { color: crimson; }

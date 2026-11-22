@@ -1,0 +1,18 @@
+{
+  "name": "spike-wails-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build --mode production"
+  },
+  "dependencies": {
+    "@wailsio/runtime": "3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  }
+}

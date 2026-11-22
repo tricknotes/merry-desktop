@@ -1,0 +1,39 @@
+{
+  "name": "spike-electron",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase 0 UI spike (Electron)",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build:renderer": "tsc -p src/renderer/tsconfig.json && vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build": "npm run build:renderer && npm run build:main",
+    "dist": "npm run build && electron-builder --win --dir",
+    "start": "npm run build && electron ."
+  },
+  "build": {
+    "appId": "dev.spike.electron",
+    "productName": "SpikeElectron",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "assets/**",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": "dir"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  }
+}
