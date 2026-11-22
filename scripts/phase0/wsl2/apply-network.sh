@@ -29,10 +29,12 @@ printf '. /etc/engine/proxy.env\n' > /etc/profile.d/engine-proxy.sh
 rm -f /usr/local/share/ca-certificates/engine-*.crt
 if [ -n "${ENGINE_CA_DIR:-}" ] && ls "$ENGINE_CA_DIR"/*.crt >/dev/null 2>&1; then
   install -d -m 0755 /usr/local/share/ca-certificates
+  count=0
   for crt in "$ENGINE_CA_DIR"/*.crt; do
     cp "$crt" "/usr/local/share/ca-certificates/engine-$(basename "$crt")"
+    count=$((count + 1))
   done
-  echo "[network] installed $(ls "$ENGINE_CA_DIR"/*.crt | wc -l) extra CA certificate(s)"
+  echo "[network] installed $count extra CA certificate(s)"
 fi
 if command -v update-ca-certificates >/dev/null 2>&1; then
   update-ca-certificates >/dev/null 2>&1 || true
