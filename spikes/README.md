@@ -5,6 +5,9 @@ UI技術を1つに決めるための試作。Tauri、Electron、Go + Wails で�
 
 ここにあるコードは比較のための使い捨て。採用した技術で、フェーズ1に作り直す。
 
+比較の結果、Go + Wails v3 を採用した。Tauri と Electron のスパイクと計測ワークフローは削除した。
+計測をやり直すときは、コミット `0e51eb8` をチェックアウトする。
+
 ## 共通仕様
 
 3つとも次の動きをそろえる。
@@ -52,8 +55,6 @@ UI技術を1つに決めるための試作。Tauri、Electron、Go + Wails で�
 
 | パス | 中身 |
 | --- | --- |
-| `tauri/` | Tauri 2(Rust) |
-| `electron/` | Electron + electron-builder(TypeScript) |
 | `wails/` | Wails v3(Go) |
 | `shared/icons/` | アイコンの元ファイル。`scripts/phase0/gen-icons.py` で生成し、各スパイクにコピーしている |
 
