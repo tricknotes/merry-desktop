@@ -36,7 +36,7 @@ MPL-2.0 は lightningcss(Vite が使うCSS処理)で、ビルド時だけ使う�
 
 ### 未確認
 
-- Rust(Cargo)と Go の間接の依存。`Cargo.lock` と `go.sum` は CI の初回ビルドで生成される。
+- Rust(Cargo)と Go の間接の依存。`Cargo.lock`(437パッケージ)と `go.sum` は、CI の初回ビルドで生成したものをコミットしている。
   UI技術を決めたあと、採用したものについて `cargo deny` や `go-licenses` などで確認する。
 - Electron の配布物に入る Chromium、FFmpeg などの表記。Electron は `LICENSES.chromium.html` を同梱しており、
   FFmpeg は LGPL-2.1 でビルドされている。Electron を採用する場合は、表記の方法をあらためて確認する。
