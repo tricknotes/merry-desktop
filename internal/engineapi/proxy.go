@@ -18,13 +18,27 @@ var containerCreate = regexp.MustCompile(`^(/v[0-9.]+)?/containers/create$`)
 // maxCreateBody bounds the body read for rewriting (create bodies are small).
 const maxCreateBody = 8 << 20
 
+// Options change container create requests on their way to the engine.
+type Options struct {
+	// Translate rewrites bind mount paths (nil: no rewriting).
+	Translate Translator
+	// Env is added to new containers unless they set the same key (F-11).
+	Env []string
+}
+
 // NewProxy returns a handler that forwards every request to the engine at
 // socketPath and rewrites bind mount paths with translate. Streaming responses
 // (logs, events, attach) and protocol upgrades (exec, attach) pass through.
 func NewProxy(socketPath string, translate Translator, log *slog.Logger) http.Handler {
+	return NewProxyWith(socketPath, Options{Translate: translate}, log)
+}
+
+// NewProxyWith is NewProxy with all options.
+func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handler {
 	if log == nil {
 		log = slog.Default()
 	}
+	translate := opts.Translate
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
@@ -39,7 +53,7 @@ func NewProxy(socketPath string, translate Translator, log *slog.Logger) http.Ha
 			r.Out.URL.Scheme = "http"
 			r.Out.URL.Host = "docker"
 			r.Out.Host = "docker"
-			if translate == nil || r.In.Method != http.MethodPost || !containerCreate.MatchString(r.In.URL.Path) {
+			if (translate == nil && len(opts.Env) == 0) || r.In.Method != http.MethodPost || !containerCreate.MatchString(r.In.URL.Path) {
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Out.Body, maxCreateBody))
@@ -49,13 +63,11 @@ func NewProxy(socketPath string, translate Translator, log *slog.Logger) http.Ha
 				r.Out.Body = io.NopCloser(bytes.NewReader(body))
 				return
 			}
-			rewritten, changed, err := RewriteContainerCreate(body, translate)
+			rewritten, err := rewriteCreate(body, translate, opts.Env)
 			if err != nil {
 				// Let the engine report the malformed request itself.
 				log.Warn("rewrite container create", "err", err)
 				rewritten = body
-			} else if changed {
-				log.Info("rewrote bind mount paths")
 			}
 			r.Out.Body = io.NopCloser(bytes.NewReader(rewritten))
 			r.Out.ContentLength = int64(len(rewritten))
@@ -68,4 +80,16 @@ func NewProxy(socketPath string, translate Translator, log *slog.Logger) http.Ha
 			http.Error(w, "container engine is not reachable: "+err.Error(), http.StatusBadGateway)
 		},
 	}
+}
+
+func rewriteCreate(body []byte, translate Translator, env []string) ([]byte, error) {
+	if translate != nil {
+		out, _, err := RewriteContainerCreate(body, translate)
+		if err != nil {
+			return nil, err
+		}
+		body = out
+	}
+	out, _, err := InjectEnv(body, env)
+	return out, err
 }

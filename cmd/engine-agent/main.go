@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,7 @@ func serveStdio(args []string) error {
 	socket := fs.String("engine-socket", "/var/run/docker.sock", "Docker Engine socket")
 	distroRoot := fs.String("distro-root", "", "where other WSL distros' roots are bind-mounted")
 	runDir := fs.String("run-dir", "", "directory for the per-distro sockets (under /mnt/wsl)")
+	proxyEnv := fs.String("proxy-env", "", "file with the proxy settings (export KEY=VALUE) to pass to new containers")
 	var distros names
 	fs.Var(&distros, "distro", "serve a socket for this WSL distro (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -82,10 +84,11 @@ func serveStdio(args []string) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	log.Info("engine-agent serving", "version", version, "socket", *socket, "distros", distros.String())
+	env := containerProxyEnv(*proxyEnv, log)
 
 	var servers []*http.Server
 	for _, d := range distros {
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, log)
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -98,7 +101,44 @@ func serveStdio(args []string) error {
 		}
 	}()
 	// Only the protocol may go to stdout; everything else goes to stderr.
-	return serve(stdio{Reader: os.Stdin, Writer: os.Stdout}, *socket, *distroRoot, log)
+	return serve(stdio{Reader: os.Stdin, Writer: os.Stdout}, *socket, *distroRoot, env, log)
+}
+
+// proxyKeys are the variables passed to containers, like the docker CLI's
+// "proxies" setting does.
+var proxyKeys = map[string]bool{
+	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
+	"http_proxy": true, "https_proxy": true, "no_proxy": true,
+}
+
+// containerProxyEnv reads the proxy settings written by apply-network.sh. A
+// proxy URL with credentials is not passed on: container environment variables
+// are visible to anyone who can run `docker inspect`.
+func containerProxyEnv(path string, log *slog.Logger) []string {
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Warn("read proxy settings", "err", err)
+		}
+		return nil
+	}
+	var env []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimPrefix(strings.TrimSpace(line), "export ")
+		k, v, ok := strings.Cut(line, "=")
+		if !ok || !proxyKeys[k] || v == "" {
+			continue
+		}
+		if u, err := url.Parse(v); err == nil && u.User != nil {
+			log.Warn("the proxy has credentials; it is not passed to containers", "key", k)
+			return nil
+		}
+		env = append(env, k+"="+v)
+	}
+	return env
 }
 
 // serveDistro listens on <runDir>/<distro>/docker.sock for the docker CLI in
@@ -106,7 +146,7 @@ func serveStdio(args []string) error {
 // The socket is world-accessible on purpose: /mnt/wsl is reachable only from
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
-func serveDistro(runDir, distro, socket, distroRoot string, log *slog.Logger) (*http.Server, error) {
+func serveDistro(runDir, distro, socket, distroRoot string, env []string, log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -125,7 +165,7 @@ func serveDistro(runDir, distro, socket, distroRoot string, log *slog.Logger) (*
 		return nil, err
 	}
 	srv := &http.Server{
-		Handler:  engineapi.NewProxy(socket, engineapi.DistroPaths(distroRoot, distro), log),
+		Handler:  engineapi.NewProxyWith(socket, engineapi.Options{Translate: engineapi.DistroPaths(distroRoot, distro), Env: env}, log),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() { _ = srv.Serve(l) }()
@@ -134,10 +174,10 @@ func serveDistro(runDir, distro, socket, distroRoot string, log *slog.Logger) (*
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(conn io.ReadWriteCloser, socket, distroRoot string, log *slog.Logger) error {
+func serve(conn io.ReadWriteCloser, socket, distroRoot string, env []string, log *slog.Logger) error {
 	session := mux.Server(conn)
-	windows := engineapi.NewProxy(socket, engineapi.WindowsPaths(distroRoot), log)
-	plain := engineapi.NewProxy(socket, nil, log)
+	windows := engineapi.NewProxyWith(socket, engineapi.Options{Translate: engineapi.WindowsPaths(distroRoot), Env: env}, log)
+	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: env}, log)
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

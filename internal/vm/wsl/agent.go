@@ -38,7 +38,7 @@ var agentSHA256 = func() string {
 // host and keeps the distro running (WSL stops distros without a session).
 func (b *Backend) agentCommand(distros []string) []string {
 	args := []string{agentPath, "stdio", "--engine-socket", "/var/run/docker.sock",
-		"--distro-root", b.distroRoot(), "--run-dir", b.runDir()}
+		"--distro-root", b.distroRoot(), "--run-dir", b.runDir(), "--proxy-env", "/etc/engine/proxy.env"}
 	for _, d := range distros {
 		args = append(args, "--distro", d)
 	}

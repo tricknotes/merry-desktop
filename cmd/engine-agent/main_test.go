@@ -33,7 +33,7 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 	defer engine.Close()
 
 	hostEnd, agentEnd := net.Pipe()
-	go func() { _ = serve(agentEnd, sock, "/mnt/wsl/e/distros", slog.New(slog.DiscardHandler)) }()
+	go func() { _ = serve(agentEnd, sock, "/mnt/wsl/e/distros", nil, slog.New(slog.DiscardHandler)) }()
 	session := mux.Client(hostEnd)
 	defer session.Close()
 
@@ -73,7 +73,7 @@ func TestServeDistroSocket(t *testing.T) {
 	defer engine.Close()
 
 	runDir := filepath.Join(dir, "run")
-	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", slog.New(slog.DiscardHandler))
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,10 +92,31 @@ func TestServeDistroSocket(t *testing.T) {
 	}
 	resp.Body.Close()
 	got := <-received
-	if !strings.Contains(got, `"/mnt/wsl/e/distros/Ubuntu/home/me/proj:/src"`) || !strings.Contains(got, `"/mnt/c/x:/c"`) {
+	if !strings.Contains(got, `"/mnt/wsl/e/distros/Ubuntu/home/me/proj:/src"`) || !strings.Contains(got, `"/mnt/c/x:/c"`) ||
+		!strings.Contains(got, `"HTTP_PROXY=http://p:3128"`) {
 		t.Errorf("engine got %s", got)
 	}
-	if _, err := serveDistro(runDir, "../etc", sock, "", slog.New(slog.DiscardHandler)); err == nil {
+	if _, err := serveDistro(runDir, "../etc", sock, "", nil, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("accepted a distro name with a path separator")
+	}
+}
+
+func TestContainerProxyEnv(t *testing.T) {
+	dir := t.TempDir()
+	write := func(content string) string {
+		p := filepath.Join(dir, "proxy.env")
+		_ = os.WriteFile(p, []byte(content), 0o600)
+		return p
+	}
+	log := slog.New(slog.DiscardHandler)
+	got := containerProxyEnv(write("export HTTP_PROXY=http://proxy:8080\nexport NO_PROXY=localhost,.corp\nexport PATH=/bin\n"), log)
+	if strings.Join(got, " ") != "HTTP_PROXY=http://proxy:8080 NO_PROXY=localhost,.corp" {
+		t.Errorf("env = %v", got)
+	}
+	if got := containerProxyEnv(write("export HTTPS_PROXY=http://alice:secret@proxy:8080\n"), log); got != nil {
+		t.Errorf("passed a proxy with credentials: %v", got)
+	}
+	if got := containerProxyEnv(filepath.Join(dir, "missing"), log); got != nil {
+		t.Errorf("missing file: %v", got)
 	}
 }
