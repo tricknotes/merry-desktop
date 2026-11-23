@@ -82,7 +82,7 @@ func (c *Controller) setStatus(status vm.Status, message string) {
 	c.update(func(s *Snapshot) { s.Status, s.Message = status, message })
 }
 
-// begin waits until no other operation runs and takes the turn; end gives it back.
+// begin waits until no other operation runs and takes its turn; end gives the turn back.
 func (c *Controller) begin() { c.op.Lock() }
 func (c *Controller) end()   { c.op.Unlock() }
 

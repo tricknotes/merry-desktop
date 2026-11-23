@@ -134,5 +134,17 @@ docker --context merry-dev-engine ps   # start の間、このディストリの
 
 ## 動作確認
 
-作業用PCは Smart App Control で署名のない exe を起動できないため、動作確認は CI で行う(2026-11-23 決定)。
+作業用PCは Smart App Control で署名のない exe を起動できないため、動作確認は CI で行う。
+
+## CI
+
+`.github/workflows/build.yml` は、同じ Makefile を、ビルド用イメージと同じ版の Go と Node.js で直接動かす
+(setup-go と setup-node のキャッシュを効かせるため)。
+
+- `build` ジョブ: `make all`(lint、Linux でのテスト、Windows 向けのビルド)。成果物 `windows-binaries` を残す
+- `windows` ジョブ: Windows で `go vet` と `go test ./internal/...`(名前付きパイプ、レジストリ、証明書ストアの
+  テストを含む)。埋め込むフロントと engine-agent は仮のファイルで代える
+- `builder-image.yml`: `build/dev/` か `compose.yaml` が変わったときだけ、ビルド用イメージを作って中で `make all` を動かす
+
+Go と Node.js の版は `build/dev/Dockerfile` と `build.yml` の両方に書いてあるので、そろえて変える。
 実機での確認は、別のPCで行う。
