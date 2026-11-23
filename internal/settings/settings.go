@@ -23,7 +23,13 @@ type Settings struct {
 	// BuildProxy is the proxy written into the docker CLI configs for builds
 	// (nil: not enabled). It is kept so that disabling removes exactly it.
 	BuildProxy *vm.ClientProxy `json:"buildProxy,omitempty"`
+	// AutoCleanup turns the daily cleanup of old build cache and untagged
+	// images on or off (I-22). nil means on.
+	AutoCleanup *bool `json:"autoCleanup,omitempty"`
 }
+
+// AutoCleanupEnabled reports whether the daily cleanup runs.
+func (s Settings) AutoCleanupEnabled() bool { return s.AutoCleanup == nil || *s.AutoCleanup }
 
 // Store reads and writes Settings at Path.
 type Store struct {

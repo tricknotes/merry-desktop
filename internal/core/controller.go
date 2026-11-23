@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
@@ -43,6 +44,8 @@ type Controller struct {
 	notices   []func(string)
 	// memoryHigh is true after a memory pressure notice, until the use drops.
 	memoryHigh bool
+	// lastCleanup is when the automatic cleanup last ran (I-22).
+	lastCleanup time.Time
 }
 
 func NewController(backend vm.Backend, log *slog.Logger) *Controller {

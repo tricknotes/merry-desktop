@@ -58,6 +58,24 @@
         <tbody></tbody>
       </table>
 
+      <h2>ディスクの整理</h2>
+      <label class="check">
+        <input id="auto-cleanup" type="checkbox" />
+        30日使われていないビルドキャッシュと、タグのないイメージを自動で消す(1日1回)
+      </label>
+      <p class="hint">止まっているコンテナと使われていないイメージは、下の候補から選んで消せます。ボリュームはデータが入っているので、ここでは消しません。</p>
+      <p class="controls"><button id="cleanup-load" type="button">候補を表示</button></p>
+      <div id="cleanup" hidden>
+        <h3>7日以上止まっているコンテナ</h3>
+        <ul id="cleanup-containers" class="registries"></ul>
+        <h3>どのコンテナも使っていないイメージ</h3>
+        <ul id="cleanup-images" class="registries"></ul>
+        <p class="controls"><button id="cleanup-remove" type="button">選んだものを削除</button></p>
+        <h3>ボリューム(表示のみ)</h3>
+        <ul id="cleanup-volumes" class="registries"></ul>
+      </div>
+      <p id="cleanup-message" role="status"></p>
+
       <h2>WSL との連携</h2>
       <p class="hint">チェックしたディストリの docker CLI から、この VM を使えます(ディストリのファイルのバインドマウントも使えます)。</p>
       <ul id="integrations" class="registries"></ul>

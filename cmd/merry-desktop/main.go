@@ -244,6 +244,9 @@ func backgroundLoop(controller *core.Controller, store *settings.Store, logger *
 		controller.Refresh(ctx)
 		if i%memoryCheckEvery == 0 {
 			controller.CheckMemory(ctx)
+			if s, err := store.Load(); err == nil && s.AutoCleanupEnabled() {
+				controller.MaybeAutoCleanup(ctx) // runs at most once a day
+			}
 		}
 	}
 }
