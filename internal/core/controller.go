@@ -24,6 +24,10 @@ type Controller struct {
 	backend vm.Backend
 	log     *slog.Logger
 
+	// SkipHostIntegration leaves out the host CLI step of Setup. The
+	// development CLI sets it: it runs inside WSL, not on the Windows host.
+	SkipHostIntegration bool
+
 	mu        sync.Mutex
 	busy      bool // an operation is in flight
 	state     Snapshot

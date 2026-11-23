@@ -44,6 +44,8 @@ type Backend struct {
 	HTTPClient   *http.Client
 	// HostCLI is where the Windows docker CLI is installed (F-04).
 	HostCLI hostCLI
+	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
+	HostPath func(string) string
 
 	// Distros overrides which WSL distros are integrated (nil: the default
 	// distro only, see distros.go).

@@ -100,7 +100,7 @@ func (b *Backend) Provision(ctx context.Context, network vm.Network, progress fu
 	if err := os.MkdirAll(disk, 0o755); err != nil {
 		return err
 	}
-	if err := b.mustRun(ctx, RunOptions{}, "--import", b.Distro, disk, rootfs, "--version", "2"); err != nil {
+	if err := b.mustRun(ctx, RunOptions{}, "--import", b.Distro, b.hostPath(disk), b.hostPath(rootfs), "--version", "2"); err != nil {
 		return err
 	}
 	if err := b.provisionImported(ctx, network, progress); err != nil {
@@ -142,6 +142,16 @@ func (b *Backend) provisionImported(ctx context.Context, network vm.Network, pro
 
 // mustRun runs wsl.exe and turns a non-zero exit into an error with the last
 // lines of output.
+// hostPath converts a local path to the form wsl.exe expects. It is the
+// identity on Windows; the development CLI runs inside WSL and sets HostPath
+// to `wslpath -w`.
+func (b *Backend) hostPath(p string) string {
+	if b.HostPath != nil {
+		return b.HostPath(p)
+	}
+	return p
+}
+
 func (b *Backend) mustRun(ctx context.Context, opts RunOptions, args ...string) error {
 	res, err := b.Runner.RunWith(ctx, opts, args...)
 	if err != nil {
@@ -284,4 +294,12 @@ func scrubErr(err error, proxy string) error {
 		return err
 	}
 	return errors.New(scrub(err.Error(), proxy))
+}
+
+// Unregister deletes the distro with everything in it (images, volumes).
+func (b *Backend) Unregister(ctx context.Context) error {
+	if err := b.endSession(); err != nil {
+		return err
+	}
+	return b.mustRun(ctx, RunOptions{}, "--unregister", b.Distro)
 }
