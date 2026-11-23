@@ -1,0 +1,32 @@
+# Checks the local builder image (compose.yaml, build/dev/Dockerfile) when it
+# changes: it builds and runs `make all` inside it, as developers do locally.
+name: builder-image
+
+on:
+  pull_request:
+    paths:
+      - "build/dev/**"
+      - "compose.yaml"
+      - ".github/workflows/builder-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "build/dev/**"
+      - "compose.yaml"
+      - ".github/workflows/builder-image.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  builder-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build the builder image
+        run: docker compose build builder
+      - name: make all in the builder
+        run: |
+          export DEV_UID=$(id -u) DEV_GID=$(id -g)
+          docker compose run --rm builder make all
