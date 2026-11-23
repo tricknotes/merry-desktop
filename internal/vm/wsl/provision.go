@@ -136,6 +136,11 @@ func (b *Backend) provisionImported(ctx context.Context, network vm.Network, pro
 	if err := b.mustRun(ctx, RunOptions{Env: env}, b.inDistro("sh", setupDir+"/provision.sh")...); err != nil {
 		return fmt.Errorf("provision: %w", err)
 	}
+	// Record what was applied, so that ApplyNetwork notices later changes.
+	if err := b.mustRun(ctx, RunOptions{},
+		b.inDistro("sh", "-c", `printf '%s\n' "$1" > `+networkStamp, "sh", networkFingerprint(network))...); err != nil {
+		return fmt.Errorf("record the network settings: %w", err)
+	}
 	// Stop it, so that the next start runs the [boot] command from /etc/wsl.conf.
 	return b.mustRun(ctx, RunOptions{}, "--terminate", b.Distro)
 }

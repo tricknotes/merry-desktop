@@ -48,6 +48,10 @@ type Backend struct {
 	HostCLI hostCLI
 	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
 	HostPath func(string) string
+	// appliedNetwork is the fingerprint of the network settings last applied
+	// to or found in the VM (C-2). Guarded by mu.
+	appliedNetwork string
+
 	// HostPorts lists the ports in use on the Windows host (nil: netstat.exe).
 	HostPorts func(context.Context) ([]hostListener, error)
 	// HostDockerConfig is the docker CLI config of the host user

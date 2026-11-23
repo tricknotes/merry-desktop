@@ -107,6 +107,8 @@ func (f *fakeRunner) RunWith(_ context.Context, opts RunOptions, args ...string)
 		return Result{Stdout: strings.TrimPrefix(joined, "--distribution test-engine --user root --exec echo ") + "\n"}, nil
 	case strings.HasPrefix(joined, "--distribution test-engine --user root --exec false"):
 		return Result{ExitCode: 1}, nil
+	case strings.Contains(joined, "> "+networkStamp):
+		return Result{}, nil // the provisioning records the applied network settings
 	}
 	return Result{ExitCode: 127, Stderr: "unexpected: " + joined}, nil
 }

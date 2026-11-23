@@ -191,7 +191,7 @@ func main() {
 
 	// Start the background work once the app is up, so that windows can be opened.
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		go backgroundLoop(controller, store, logger, openSetup, *launchedAtLogin)
+		go backgroundLoop(service, logger, openSetup, *launchedAtLogin)
 	})
 
 	if err := app.Run(); err != nil {
@@ -237,8 +237,9 @@ func singleWindow(app *application.App, opts application.WebviewWindowOptions) f
 
 // backgroundLoop loads the settings, guides a first run to the setup window,
 // starts the VM after login (F-05) and keeps the tray status fresh.
-func backgroundLoop(controller *core.Controller, store *settings.Store, logger *slog.Logger, openSetup func(), launchedAtLogin bool) {
+func backgroundLoop(service *appservice.Service, logger *slog.Logger, openSetup func(), launchedAtLogin bool) {
 	ctx := context.Background()
+	controller, store := service.Controller, service.Settings
 	if saved, err := store.Load(); err != nil {
 		logger.Warn("load settings", "err", err)
 	} else if err := controller.ApplySavedIntegrations(ctx, saved.Integrations); err != nil {
@@ -266,6 +267,7 @@ func backgroundLoop(controller *core.Controller, store *settings.Store, logger *
 		controller.Refresh(ctx)
 		if i%memoryCheckEvery == 0 {
 			controller.CheckMemory(ctx)
+			appservice.SyncNetwork(ctx, service, logger) // VPN connected or left (C-2)
 			if s, err := store.Load(); err == nil && s.AutoCleanupEnabled() {
 				controller.MaybeAutoCleanup(ctx) // runs at most once a day
 			}

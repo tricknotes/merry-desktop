@@ -143,6 +143,15 @@ type Provisioner interface {
 	Destroy(ctx context.Context) error
 }
 
+// NetworkApplier is implemented by backends that can apply changed proxy and
+// CA settings to a VM that already exists (C-2). The engine and the sessions
+// to it use the new settings after the next VM start.
+type NetworkApplier interface {
+	// ApplyNetwork writes the settings into the VM if they differ from what
+	// it has, and reports whether they did.
+	ApplyNetwork(ctx context.Context, network Network) (changed bool, err error)
+}
+
 // Maintainer is implemented by backends that need periodic upkeep while the VM
 // runs (for example re-creating mounts lost when another VM restarted).
 type Maintainer interface {
