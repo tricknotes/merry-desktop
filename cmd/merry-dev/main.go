@@ -132,6 +132,9 @@ func newBackend(name string) (*wsl.Backend, error) {
 	}
 	b := wsl.New(name)
 	b.ConfigPath = filepath.Join(profile, ".wslconfig")
+	// This runs inside a WSL distro: its docker config is handled as an
+	// integrated distro, and the Windows CLI is out of scope.
+	b.HostDockerConfig = ""
 	b.InstallRoot = filepath.Join(localAppData, name)
 	b.HostPath = func(p string) string {
 		out, err := exec.Command("wslpath", "-w", p).Output()

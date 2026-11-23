@@ -240,3 +240,32 @@ func TestRefreshSkipsWhileAnOperationRuns(t *testing.T) {
 		t.Fatal("Refresh waited instead of skipping")
 	}
 }
+
+// countingStub counts Start calls on the backend.
+type countingStub struct {
+	*stub.Backend
+	starts int
+}
+
+func (s *countingStub) Start(ctx context.Context) error {
+	s.starts++
+	return s.Backend.Start(ctx)
+}
+
+func TestStartConnectsToAVMStartedElsewhere(t *testing.T) {
+	b := &countingStub{Backend: newStub()}
+	_ = b.Backend.Start(context.Background()) // running, but not started by this controller
+	c := NewController(b, nil)
+	c.Refresh(context.Background())
+	if c.Snapshot().Status != vm.StatusRunning {
+		t.Fatal("refresh did not see the running VM")
+	}
+	c.Start(context.Background())
+	if b.starts != 1 {
+		t.Fatalf("backend starts = %d, want 1 (this process must connect)", b.starts)
+	}
+	c.Start(context.Background())
+	if b.starts != 1 {
+		t.Fatalf("backend starts = %d after a second Start, want still 1", b.starts)
+	}
+}

@@ -31,6 +31,11 @@ type Controller struct {
 	// op serializes VM operations. User operations wait for it; the background
 	// Refresh skips when it is taken.
 	op sync.Mutex
+	// started is true after this controller started the VM successfully, and
+	// false again after a stop or a failure. A VM can also be running because
+	// someone else started it (another process, the user): then Start must
+	// still run, to set up this process's connection to it. Guarded by op.
+	started bool
 
 	mu        sync.Mutex
 	state     Snapshot
@@ -82,11 +87,12 @@ func (c *Controller) begin() { c.op.Lock() }
 func (c *Controller) end()   { c.op.Unlock() }
 
 // Start boots the VM. It blocks until the engine answers or start fails. If
-// the VM is already running (for example a second click), it does nothing.
+// this controller already started it (for example a second click), it does
+// nothing.
 func (c *Controller) Start(ctx context.Context) {
 	c.begin()
 	defer c.end()
-	if c.Snapshot().Status == vm.StatusRunning {
+	if c.started && c.Snapshot().Status == vm.StatusRunning {
 		return
 	}
 	c.start(ctx)
@@ -95,10 +101,12 @@ func (c *Controller) Start(ctx context.Context) {
 func (c *Controller) start(ctx context.Context) {
 	c.setStatus(vm.StatusStarting, "")
 	if err := c.backend.Start(ctx); err != nil {
+		c.started = false
 		c.log.Error("start failed", "err", err)
 		c.setStatus(vm.StatusError, describe(err))
 		return
 	}
+	c.started = true
 	c.setStatus(vm.StatusRunning, "")
 }
 
@@ -110,6 +118,7 @@ func (c *Controller) Stop(ctx context.Context) {
 }
 
 func (c *Controller) stop(ctx context.Context) bool {
+	c.started = false
 	if err := c.backend.Stop(ctx); err != nil {
 		c.log.Error("stop failed", "err", err)
 		c.setStatus(vm.StatusError, describe(err))
@@ -139,6 +148,9 @@ func (c *Controller) Refresh(ctx context.Context) {
 	if err != nil {
 		c.setStatus(vm.StatusError, describe(err))
 		return
+	}
+	if status != vm.StatusRunning {
+		c.started = false
 	}
 	if c.Snapshot().Status != status {
 		c.setStatus(status, "")
