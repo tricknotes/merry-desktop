@@ -48,6 +48,8 @@ type Backend struct {
 	HostCLI hostCLI
 	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
 	HostPath func(string) string
+	// HostPorts lists the ports in use on the Windows host (nil: netstat.exe).
+	HostPorts func(context.Context) ([]hostListener, error)
 	// HostDockerConfig is the docker CLI config of the host user
 	// (%USERPROFILE%\.docker\config.json); empty skips it.
 	HostDockerConfig string

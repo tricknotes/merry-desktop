@@ -31,6 +31,9 @@ type Options struct {
 	// WarnSlowBinds adds a warning to the create response for bind mounts
 	// from a Windows drive (I-09).
 	WarnSlowBinds bool
+	// CheckPorts, if set, returns warnings for published host ports that are
+	// already taken on the host (F-22). The container is still created.
+	CheckPorts func(ctx context.Context, ports []PortRequest) []string
 	// Notify, if set, also receives each warning, for clients that do not show
 	// the create response's warnings (docker compose does not).
 	Notify func(warning string)
@@ -71,7 +74,7 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 					log.Warn("before container create", "err", err)
 				}
 			}
-			if translate == nil && len(opts.Env) == 0 && !opts.WarnSlowBinds {
+			if translate == nil && len(opts.Env) == 0 && !opts.WarnSlowBinds && opts.CheckPorts == nil {
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Out.Body, maxCreateBody))
@@ -85,8 +88,13 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 			if opts.WarnSlowBinds {
 				warnings = SlowBindWarnings(body, translate)
 			}
+			if opts.CheckPorts != nil {
+				if ports := PublishedPorts(body); len(ports) > 0 {
+					warnings = append(warnings, opts.CheckPorts(r.In.Context(), ports)...)
+				}
+			}
 			if len(warnings) > 0 {
-				log.Info("bind mounts from a Windows drive", "count", len(warnings))
+				log.Info("container create warnings", "count", len(warnings))
 				r.Out.Header.Set(warningsHeader, encodeWarnings(warnings))
 				if opts.Notify != nil {
 					for _, w := range warnings {
