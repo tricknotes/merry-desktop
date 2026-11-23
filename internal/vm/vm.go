@@ -123,6 +123,7 @@ const (
 	StepCreate    SetupStep = "create"
 	StepStart     SetupStep = "start"
 	StepVerify    SetupStep = "verify"
+	StepHostCLI   SetupStep = "cli"
 )
 
 // Provisioner is implemented by backends that can create their VM.
@@ -143,4 +144,10 @@ type Provisioner interface {
 // runs (for example re-creating mounts lost when another VM restarted).
 type Maintainer interface {
 	Maintain(ctx context.Context) error
+}
+
+// HostIntegrator is implemented by backends that set up the docker CLI on the
+// host (F-04): installing it, adding it to PATH, creating a context if needed.
+type HostIntegrator interface {
+	IntegrateHost(ctx context.Context, network Network, progress func(string)) error
 }
