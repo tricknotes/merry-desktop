@@ -42,6 +42,14 @@
       </p>
       <p id="integrations-message" role="status"></p>
 
+      <h2>ビルドのプロキシ</h2>
+      <label class="check">
+        <input id="build-proxy" type="checkbox" />
+        docker build にもプロキシを渡す
+      </label>
+      <p class="hint">docker の設定ファイル(~/.docker/config.json)の proxies に、検出したプロキシを書き込みます(元のファイルはバックアップします)。自分で設定した proxies は変更しません。パスワードつきのプロキシは書き込みません。</p>
+      <ul id="build-proxy-result" class="registries"></ul>
+
       <h2>社内レジストリ</h2>
       <p class="hint">ログイン情報は Windows の資格情報マネージャーに保存されます。</p>
       <ul id="registries" class="registries"></ul>

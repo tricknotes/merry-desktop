@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +48,9 @@ type Backend struct {
 	HostCLI hostCLI
 	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
 	HostPath func(string) string
+	// HostDockerConfig is the docker CLI config of the host user
+	// (%USERPROFILE%\.docker\config.json); empty skips it.
+	HostDockerConfig string
 	// PipeNames are the named pipes tried in order for the host CLI (Windows;
 	// nil: \\.\pipe\docker_engine, then one named after the distro).
 	PipeNames []string
@@ -78,6 +83,9 @@ func New(distro string) *Backend {
 		RootfsSHA256: alpineSHA256,
 	}
 	b.HostCLI = defaultHostCLI(b.InstallRoot)
+	if home, err := os.UserHomeDir(); err == nil {
+		b.HostDockerConfig = filepath.Join(home, ".docker", "config.json")
+	}
 	return b
 }
 

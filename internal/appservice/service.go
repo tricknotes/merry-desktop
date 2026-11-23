@@ -100,6 +100,40 @@ func (s *Service) SetIntegrations(names []string) error {
 	return err
 }
 
+// BuildProxyEnabled reports whether the proxy is written into the docker CLI
+// configs for builds (C-4).
+func (s *Service) BuildProxyEnabled() (bool, error) {
+	cur, err := s.Settings.Load()
+	return cur.BuildProxy != nil, err
+}
+
+// SetBuildProxy writes or removes the proxy in the docker CLI configs of the
+// host and the integrated distros, and returns one line per place.
+func (s *Service) SetBuildProxy(enable bool) ([]string, error) {
+	ctx := context.Background()
+	cur, err := s.Settings.Load()
+	if err != nil {
+		return nil, err
+	}
+	if !enable {
+		if cur.BuildProxy == nil {
+			return nil, nil
+		}
+		lines, err := s.Controller.DisableBuildProxy(ctx, *cur.BuildProxy)
+		if err != nil {
+			return lines, err
+		}
+		_, err = s.Settings.Update(func(v *settings.Settings) { v.BuildProxy = nil })
+		return lines, err
+	}
+	written, lines, err := s.Controller.EnableBuildProxy(ctx)
+	if err != nil {
+		return lines, err
+	}
+	_, err = s.Settings.Update(func(v *settings.Settings) { v.BuildProxy = &written })
+	return lines, err
+}
+
 // Registries lists the registries offered for login (F-12).
 func (s *Service) Registries() ([]string, error) {
 	cur, err := s.Settings.Load()

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/tricknotes/merry-desktop/internal/vm"
 )
 
 // Settings is what the user configured.
@@ -18,6 +20,9 @@ type Settings struct {
 	// Integrations are the environments (WSL distros) whose docker CLI may use
 	// the engine. nil means the backend's default; an empty list means none.
 	Integrations *[]string `json:"integrations,omitempty"`
+	// BuildProxy is the proxy written into the docker CLI configs for builds
+	// (nil: not enabled). It is kept so that disabling removes exactly it.
+	BuildProxy *vm.ClientProxy `json:"buildProxy,omitempty"`
 }
 
 // Store reads and writes Settings at Path.

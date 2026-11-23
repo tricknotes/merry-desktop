@@ -191,3 +191,19 @@ type Integrator interface {
 	// the VM runs, the change applies right away without stopping it.
 	SetIntegrations(ctx context.Context, names []string) error
 }
+
+// ClientProxy is what the docker CLI passes to containers and builds.
+type ClientProxy struct {
+	HTTPProxy  string `json:"httpProxy"`
+	HTTPSProxy string `json:"httpsProxy"`
+	NoProxy    string `json:"noProxy"`
+}
+
+// ClientProxyConfigurer is implemented by backends that can write the proxy
+// into the docker CLI configuration of the places that use the engine (the
+// host and integrated environments), so that BuildKit builds get it (C-4).
+type ClientProxyConfigurer interface {
+	// ConfigureClientProxy writes (enable) or removes p, and returns one
+	// user-facing line per place. Values the user wrote are never changed.
+	ConfigureClientProxy(ctx context.Context, p ClientProxy, enable bool) ([]string, error)
+}
