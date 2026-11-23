@@ -70,6 +70,37 @@ $env:MERRY_ENGINE_NAME = "phase0-engine"
 .\merry-desktop.exe
 ```
 
+## 開発用 CLI(merry-dev)
+
+`cmd/merry-dev` は、WSL の中(開発に使う Ubuntu など)から VM を操作する Linux 用のコマンド。
+アプリと同じコアと WSL バックエンドを使い、`wsl.exe` を呼んで VM を動かす。
+Windows 側には何も置かないので、署名のない exe を起動できない環境でも使える。
+
+```bash
+docker compose run --rm builder make dev   # bin/merry-dev を作る
+./bin/merry-dev setup        # VM の作成から hello-world まで(初回は約20秒)
+./bin/merry-dev start        # 起動して、Ctrl+C まで動かしたままにする
+docker --context merry-dev-engine ps   # start の間、このディストリの docker CLI から使える
+./bin/merry-dev status
+./bin/merry-dev resources [-cpus N] [-memory MiB] [-disk GiB] [-restart]
+./bin/merry-dev diagnostics [-o report.zip]
+./bin/merry-dev stop
+./bin/merry-dev unregister -yes   # VM を中身ごと消す
+```
+
+- 既定の VM 名は `merry-dev-engine`。アプリの VM(`merry-desktop-engine`)とは別になる。`-name` で変えられる。
+- `start` の間は、WSL の既定のディストリと連携する(ルートのバインドマウントと、docker CLI があれば context の作成)。
+  `-v $PWD:/src` や Compose の `./` のバインドマウントも、このディストリのパスのまま使える。
+- `.wslconfig` と VM のディスクは、Windows のユーザーフォルダ(`%USERPROFILE%`、`%LOCALAPPDATA%`)に置く。
+- `resources -restart` で CPU とメモリを反映すると、WSL 全体が再起動する(ほかのディストリも止まる)。
+
+扱えないもの(Windows でしか動かないもの):
+
+- トレイと画面
+- 名前付きパイプ(Windows の docker CLI からの接続)
+- Windows の docker CLI、PATH、`docker login`(セットアップの「ターミナルの設定」は飛ばす)
+- Windows の信頼されたルート証明書の取り込み(WSL の中からは読めない)
+
 ## 動作確認
 
 作業用PCは Smart App Control で署名のない exe を起動できないため、動作確認は CI で行う(2026-11-23 決定)。

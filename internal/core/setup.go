@@ -108,7 +108,7 @@ func (c *Controller) Setup(ctx context.Context, emit func(SetupEvent)) error {
 	}
 	emit(SetupEvent{Step: vm.StepVerify, State: SetupDone, Message: "hello-world が動きました"})
 
-	if h, ok := c.backend.(vm.HostIntegrator); ok {
+	if h, ok := c.backend.(vm.HostIntegrator); ok && !c.SkipHostIntegration {
 		emit(SetupEvent{Step: vm.StepHostCLI, State: SetupRunning, Message: "ターミナルから docker を使えるようにしています"})
 		progress := func(line string) { emit(SetupEvent{Step: vm.StepHostCLI, State: SetupRunning, Message: line}) }
 		if err := h.IntegrateHost(ctx, network, progress); err != nil {

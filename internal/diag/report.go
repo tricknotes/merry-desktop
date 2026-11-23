@@ -59,7 +59,7 @@ func Write(ctx context.Context, path string, sources []Source, secrets ...string
 			summary += "- " + n + "\n"
 		}
 	}
-	if w, err := zw.Create("README.txt"); err == nil {
+	if w, err := zw.CreateHeader(&zip.FileHeader{Name: "README.txt", Method: zip.Deflate, Modified: time.Now()}); err == nil {
 		_, _ = w.Write([]byte(Redact(summary, secrets...)))
 	}
 	if err := zw.Close(); err != nil {

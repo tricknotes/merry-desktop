@@ -9,7 +9,7 @@ GO_DIRS := cmd internal frontend
 # The engine-agent runs inside the engine VM and is embedded into the app.
 AGENT := internal/vm/wsl/assets/engine-agent
 
-.PHONY: all build test lint frontend agent tidy clean
+.PHONY: all build test lint frontend agent dev tidy clean
 
 all: lint test build
 
@@ -25,6 +25,7 @@ agent:
 # is only built for Windows: the Linux build of Wails needs GTK, which the builder lacks.
 test: frontend agent
 	go test -race ./internal/... ./cmd/engine-agent/
+	go vet ./cmd/merry-dev/
 	$(WINDOWS_ENV) go vet ./...
 
 lint:
@@ -32,9 +33,13 @@ lint:
 	@unformatted="$$(gofmt -l $(GO_DIRS))"; \
 	if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 
-build: frontend agent
+build: frontend agent dev
 	$(WINDOWS_ENV) go build -tags production -trimpath -ldflags="$(WINDOWS_LDFLAGS)" \
 		-o bin/$(APP).exe ./cmd/$(APP)
+
+# The development CLI runs inside WSL (Linux) and drives the VM through wsl.exe.
+dev: agent
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o bin/merry-dev ./cmd/merry-dev
 
 tidy: agent
 	$(WINDOWS_ENV) go mod tidy
