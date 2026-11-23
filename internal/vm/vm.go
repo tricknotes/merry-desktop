@@ -171,3 +171,20 @@ type DiagnosticFile struct {
 type Diagnoser interface {
 	Diagnostics(ctx context.Context, checkHosts []string) ([]DiagnosticFile, error)
 }
+
+// Integration is a place, besides the host, whose docker CLI can use the
+// engine (on WSL: another WSL distro of the user).
+type Integration struct {
+	Name    string `json:"name"`
+	Default bool   `json:"default"` // the one used when nothing was chosen
+	Enabled bool   `json:"enabled"`
+}
+
+// Integrator is implemented by backends that can serve other environments.
+type Integrator interface {
+	// Integrations lists the candidates and whether each is enabled.
+	Integrations(ctx context.Context) ([]Integration, error)
+	// SetIntegrations chooses which ones to serve; nil means the default. If
+	// the VM runs, the change applies right away without stopping it.
+	SetIntegrations(ctx context.Context, names []string) error
+}

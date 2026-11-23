@@ -33,6 +33,15 @@
       </form>
       <p id="message" role="status"></p>
 
+      <h2>WSL との連携</h2>
+      <p class="hint">チェックしたディストリの docker CLI から、この VM を使えます(ディストリのファイルのバインドマウントも使えます)。</p>
+      <ul id="integrations" class="registries"></ul>
+      <p class="controls">
+        <button id="save-integrations" type="button">保存</button>
+        <button id="reset-integrations" type="button">既定に戻す</button>
+      </p>
+      <p id="integrations-message" role="status"></p>
+
       <h2>社内レジストリ</h2>
       <p class="hint">ログイン情報は Windows の資格情報マネージャーに保存されます。</p>
       <ul id="registries" class="registries"></ul>

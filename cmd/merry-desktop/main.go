@@ -153,7 +153,7 @@ func main() {
 
 	// Start the background work once the app is up, so that windows can be opened.
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		go backgroundLoop(controller, logger, openSetup, *launchedAtLogin)
+		go backgroundLoop(controller, store, logger, openSetup, *launchedAtLogin)
 	})
 
 	if err := app.Run(); err != nil {
@@ -199,8 +199,13 @@ func singleWindow(app *application.App, opts application.WebviewWindowOptions) f
 
 // backgroundLoop loads the settings, guides a first run to the setup window,
 // starts the VM after login (F-05) and keeps the tray status fresh.
-func backgroundLoop(controller *core.Controller, logger *slog.Logger, openSetup func(), launchedAtLogin bool) {
+func backgroundLoop(controller *core.Controller, store *settings.Store, logger *slog.Logger, openSetup func(), launchedAtLogin bool) {
 	ctx := context.Background()
+	if saved, err := store.Load(); err != nil {
+		logger.Warn("load settings", "err", err)
+	} else if err := controller.ApplySavedIntegrations(ctx, saved.Integrations); err != nil {
+		logger.Warn("apply integrations", "err", err)
+	}
 	if err := controller.LoadResources(ctx); err != nil {
 		logger.Warn("load resources", "err", err)
 	}

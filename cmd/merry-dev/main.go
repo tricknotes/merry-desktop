@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/core"
+	"github.com/tricknotes/merry-desktop/internal/settings"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 	"github.com/tricknotes/merry-desktop/internal/vm/wsl"
 )
@@ -189,6 +190,9 @@ func setup(ctx context.Context, c *core.Controller, b *wsl.Backend) error {
 // start keeps the VM running while the command runs: WSL stops a distro soon
 // after its last session ends, and this process holds the agent session.
 func start(ctx context.Context, c *core.Controller, b *wsl.Backend) error {
+	if _, err := devSettings(ctx, c); err != nil {
+		return err
+	}
 	t0 := time.Now()
 	c.Start(ctx)
 	s := c.Snapshot()
@@ -309,4 +313,19 @@ func unregister(ctx context.Context, b *wsl.Backend, args []string) error {
 	}
 	fmt.Println("削除しました:", b.Distro)
 	return nil
+}
+
+// devSettings opens the development CLI's settings (separate from the app's)
+// and applies the saved choice of integrated distros.
+func devSettings(ctx context.Context, c *core.Controller) (*settings.Store, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	store := &settings.Store{Path: filepath.Join(configDir, "merry-dev", "settings.json")}
+	saved, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+	return store, c.ApplySavedIntegrations(ctx, saved.Integrations)
 }

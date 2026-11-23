@@ -1,5 +1,6 @@
 import { bridge } from "./bridge";
 import { showDevNav } from "./native";
+import { initIntegrations } from "./integrations";
 import { initRegistries } from "./registry";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
@@ -93,7 +94,7 @@ async function init(): Promise<void> {
   const snapshot = await bridge.getSnapshot();
   show(snapshot);
   fill(snapshot.resources);
-  await initRegistries();
+  await Promise.all([initRegistries(), initIntegrations()]);
 }
 
 void init();

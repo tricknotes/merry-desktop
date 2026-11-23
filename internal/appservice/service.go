@@ -71,6 +71,27 @@ func (s *Service) ApplyResources(resources vm.Resources, restartNow bool) error 
 	return err
 }
 
+// Integrations lists the WSL distros (or other environments) that can use the
+// engine, and which are enabled (F-04).
+func (s *Service) Integrations() ([]vm.Integration, error) {
+	return s.Controller.Integrations(context.Background())
+}
+
+// SetIntegrations saves and applies the choice. nil means "the default".
+func (s *Service) SetIntegrations(names []string) error {
+	if err := s.Controller.SetIntegrations(context.Background(), names); err != nil {
+		return err
+	}
+	_, err := s.Settings.Update(func(v *settings.Settings) {
+		if names == nil {
+			v.Integrations = nil
+			return
+		}
+		v.Integrations = &names
+	})
+	return err
+}
+
 // Registries lists the registries offered for login (F-12).
 func (s *Service) Registries() ([]string, error) {
 	cur, err := s.Settings.Load()
