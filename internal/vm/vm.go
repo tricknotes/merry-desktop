@@ -157,3 +157,17 @@ type HostIntegrator interface {
 type RegistryLogin interface {
 	Login(ctx context.Context, server, username, password string) error
 }
+
+// DiagnosticFile is one file for the diagnostic report (F-14). It is redacted
+// by the caller before it is written.
+type DiagnosticFile struct {
+	Name string
+	Data []byte
+}
+
+// Diagnoser is implemented by backends that can describe their VM and host
+// for the diagnostic report. checkHosts are extra hosts (host[:port]) whose
+// reachability from the VM should be tested, such as the company registry.
+type Diagnoser interface {
+	Diagnostics(ctx context.Context, checkHosts []string) ([]DiagnosticFile, error)
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/tricknotes/merry-desktop/frontend"
 	"github.com/tricknotes/merry-desktop/internal/appinfo"
+	"github.com/tricknotes/merry-desktop/internal/applog"
 	"github.com/tricknotes/merry-desktop/internal/core"
 	"github.com/tricknotes/merry-desktop/internal/settings"
 	"github.com/tricknotes/merry-desktop/internal/ui/icons"
@@ -118,12 +120,23 @@ func main() {
 	launchedAtLogin := flag.Bool(autostartArg[2:], false, "launched at user login; also start the VM")
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	controller := core.NewController(newBackend(), logger)
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
 	}
+	cacheDir, err := os.UserCacheDir() // %LOCALAPPDATA% on Windows
+	if err != nil {
+		log.Fatal(err)
+	}
+	logDir := filepath.Join(cacheDir, appinfo.ID, "logs")
+	logger, logFile, err := applog.Open(logDir)
+	if err != nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+		logger.Warn("log file", "err", err)
+	} else {
+		defer logFile.Close()
+	}
+	controller := core.NewController(newBackend(), logger)
 	service := &VMService{
 		controller: controller,
 		settings:   &settings.Store{Path: filepath.Join(configDir, appinfo.ID, "settings.json")},
@@ -164,6 +177,9 @@ func main() {
 	menu.AddSeparator()
 	menu.Add("セットアップ...").OnClick(func(*application.Context) { openSetup() })
 	menu.Add("設定を開く").OnClick(func(*application.Context) { openSettings() })
+	menu.Add("診断レポートを作成").OnClick(func(*application.Context) {
+		go writeDiagnostics(app, controller, service, logDir, logger)
+	})
 	autostartItem := menu.AddCheckbox("ログイン時に起動", false)
 	autostartItem.OnClick(func(ctx *application.Context) {
 		item := ctx.ClickedMenuItem()
@@ -273,5 +289,25 @@ func backgroundLoop(controller *core.Controller, logger *slog.Logger, openSetup 
 	defer ticker.Stop()
 	for range ticker.C {
 		controller.Refresh(ctx)
+	}
+}
+
+// writeDiagnostics writes the diagnostic report (F-14) to the Downloads folder
+// and shows it in the file manager.
+func writeDiagnostics(app *application.App, controller *core.Controller, service *VMService, logDir string, logger *slog.Logger) {
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, "Downloads", fmt.Sprintf("%s-diagnostics-%s.zip", appinfo.ID, time.Now().Format("20060102-150405")))
+	registries, _ := service.Registries()
+	err := controller.WriteDiagnostics(context.Background(), path, core.DiagnosticsInput{
+		AppLogDir: logDir, SettingsPath: service.settings.Path, Registries: registries,
+	})
+	if err != nil {
+		logger.Error("diagnostics", "err", err)
+		app.Dialog.Error().SetTitle("診断レポート").SetMessage("作成できませんでした: " + err.Error()).Show()
+		return
+	}
+	logger.Info("diagnostics written", "path", path)
+	if err := app.Env.OpenFileManager(path, true); err != nil {
+		app.Dialog.Info().SetTitle("診断レポート").SetMessage("作成しました: " + path).Show()
 	}
 }
