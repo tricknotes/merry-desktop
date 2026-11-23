@@ -17,6 +17,7 @@ type provisioning struct {
 	hostErr     error
 	provisioned bool
 	provisions  int
+	destroyed   int
 	helloOutput string
 }
 
@@ -31,6 +32,12 @@ func (p *provisioning) Provision(_ context.Context, _ vm.Network, progress func(
 	p.provisioned = true
 	return nil
 }
+func (p *provisioning) Destroy(ctx context.Context) error {
+	p.destroyed++
+	p.provisioned = false
+	return p.Backend.Stop(ctx)
+}
+
 func (p *provisioning) Exec(ctx context.Context, args []string) (vm.ExecResult, error) {
 	if _, err := p.Backend.Exec(ctx, args); err != nil {
 		return vm.ExecResult{}, err
@@ -120,5 +127,30 @@ func TestNeedsSetup(t *testing.T) {
 	}
 	if need, _ := NewController(newStub(), nil).NeedsSetup(context.Background()); need {
 		t.Error("a backend without provisioning never needs setup")
+	}
+}
+
+func TestRecreateDestroysAndSetsUpAgain(t *testing.T) {
+	p := newProvisioning()
+	c := NewController(p, nil)
+	ctx := context.Background()
+	if err := c.Setup(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	var events []SetupEvent
+	if err := c.Recreate(ctx, func(e SetupEvent) { events = append(events, e) }); err != nil {
+		t.Fatal(err)
+	}
+	if p.destroyed != 1 || p.provisions != 2 {
+		t.Fatalf("destroyed=%d provisions=%d, want 1 and 2", p.destroyed, p.provisions)
+	}
+	if events[0].Step != vm.StepCreate || events[0].Message != "いまの VM を削除しています" {
+		t.Errorf("first event = %+v", events[0])
+	}
+	if got := finalStates(events)[vm.StepVerify]; got != SetupDone {
+		t.Errorf("verify = %q after recreate", got)
+	}
+	if s := c.Snapshot(); s.Status != vm.StatusRunning {
+		t.Errorf("status after recreate = %q", s.Status)
 	}
 }

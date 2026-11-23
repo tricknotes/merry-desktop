@@ -57,6 +57,14 @@ func (s *Service) RunSetup() error {
 	})
 }
 
+// RecreateVM deletes the VM with its images, containers and volumes, then runs
+// the setup again (progress as EventSetup). The window confirms first.
+func (s *Service) RecreateVM() error {
+	return s.Controller.Recreate(context.Background(), func(e core.SetupEvent) {
+		s.emit(EventSetup, e)
+	})
+}
+
 // PlanResources tells the settings window what saving would involve (F-03).
 func (s *Service) PlanResources(resources vm.Resources) (vm.ResourcePlan, error) {
 	return s.Controller.PlanResources(context.Background(), resources)

@@ -202,3 +202,41 @@ func TestLoadResources(t *testing.T) {
 		t.Fatalf("resources = %+v", got)
 	}
 }
+
+func TestUserOperationsWaitForRefresh(t *testing.T) {
+	b := stub.New()
+	b.StartDelay = 0
+	c := NewController(b, nil)
+	c.begin() // stands in for a Refresh in progress
+	done := make(chan struct{})
+	go func() {
+		c.Start(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("Start did not wait for the running operation")
+	case <-time.After(30 * time.Millisecond):
+	}
+	c.end()
+	<-done
+	if s := c.Snapshot(); s.Status != vm.StatusRunning {
+		t.Fatalf("Start was dropped instead of waiting: %q", s.Status)
+	}
+}
+
+func TestRefreshSkipsWhileAnOperationRuns(t *testing.T) {
+	c := NewController(newStub(), nil)
+	c.begin()
+	defer c.end()
+	finished := make(chan struct{})
+	go func() {
+		c.Refresh(context.Background())
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("Refresh waited instead of skipping")
+	}
+}

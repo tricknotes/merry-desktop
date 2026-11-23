@@ -28,8 +28,11 @@ type Controller struct {
 	// development CLI sets it: it runs inside WSL, not on the Windows host.
 	SkipHostIntegration bool
 
+	// op serializes VM operations. User operations wait for it; the background
+	// Refresh skips when it is taken.
+	op sync.Mutex
+
 	mu        sync.Mutex
-	busy      bool // an operation is in flight
 	state     Snapshot
 	listeners []func(Snapshot)
 }
@@ -74,29 +77,18 @@ func (c *Controller) setStatus(status vm.Status, message string) {
 	c.update(func(s *Snapshot) { s.Status, s.Message = status, message })
 }
 
-// begin marks an operation as in flight. It returns false if one already is.
-func (c *Controller) begin() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.busy {
-		return false
-	}
-	c.busy = true
-	return true
-}
+// begin waits until no other operation runs and takes the turn; end gives it back.
+func (c *Controller) begin() { c.op.Lock() }
+func (c *Controller) end()   { c.op.Unlock() }
 
-func (c *Controller) end() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.busy = false
-}
-
-// Start boots the VM. It blocks until the engine answers or start fails.
+// Start boots the VM. It blocks until the engine answers or start fails. If
+// the VM is already running (for example a second click), it does nothing.
 func (c *Controller) Start(ctx context.Context) {
-	if !c.begin() {
+	c.begin()
+	defer c.end()
+	if c.Snapshot().Status == vm.StatusRunning {
 		return
 	}
-	defer c.end()
 	c.start(ctx)
 }
 
@@ -112,9 +104,7 @@ func (c *Controller) start(ctx context.Context) {
 
 // Stop shuts the VM down.
 func (c *Controller) Stop(ctx context.Context) {
-	if !c.begin() {
-		return
-	}
+	c.begin()
 	defer c.end()
 	c.stop(ctx)
 }
@@ -131,9 +121,7 @@ func (c *Controller) stop(ctx context.Context) bool {
 
 // Restart stops and starts the VM (F-01).
 func (c *Controller) Restart(ctx context.Context) {
-	if !c.begin() {
-		return
-	}
+	c.begin()
 	defer c.end()
 	if c.stop(ctx) {
 		c.start(ctx)
@@ -143,7 +131,7 @@ func (c *Controller) Restart(ctx context.Context) {
 // Refresh reads the status from the backend, to notice changes made outside
 // the app (for example `wsl --shutdown`). It does nothing while an operation runs.
 func (c *Controller) Refresh(ctx context.Context) {
-	if !c.begin() {
+	if !c.op.TryLock() {
 		return
 	}
 	defer c.end()
@@ -204,9 +192,7 @@ func (c *Controller) ApplyResources(ctx context.Context, r vm.Resources, restart
 	if !restartNow || !plan.RestartVM {
 		return nil
 	}
-	if !c.begin() {
-		return errors.New("another operation is in progress; restart later to apply")
-	}
+	c.begin()
 	defer c.end()
 	if rm, ok := c.backend.(vm.ResourceManager); ok && plan.RestartHost {
 		c.setStatus(vm.StatusStarting, "")

@@ -303,3 +303,24 @@ func (b *Backend) Unregister(ctx context.Context) error {
 	}
 	return b.mustRun(ctx, RunOptions{}, "--unregister", b.Distro)
 }
+
+// Destroy deletes the distro. The disk limit stays configured and is applied
+// again to the new disk on the next start.
+func (b *Backend) Destroy(ctx context.Context) error {
+	if ok, err := b.Provisioned(ctx); err != nil {
+		return err
+	} else if ok {
+		if err := b.Unregister(ctx); err != nil {
+			return err
+		}
+	}
+	s, err := b.loadState()
+	if err != nil {
+		return err
+	}
+	if s.AppliedDiskGiB != 0 {
+		s.AppliedDiskGiB = 0
+		return b.saveState(s)
+	}
+	return nil
+}
