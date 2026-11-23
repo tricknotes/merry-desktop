@@ -157,6 +157,46 @@ func RewriteContainerCreate(body []byte, translate Translator) ([]byte, bool, er
 	return out, true, err
 }
 
+// InjectEnv adds variables to the body of POST /containers/create (top-level
+// "Env", KEY=VALUE) unless the request already sets that key. This is how the
+// docker CLI applies the "proxies" of its config file, done here once for
+// every client.
+func InjectEnv(body []byte, env []string) ([]byte, bool, error) {
+	if len(env) == 0 {
+		return body, false, nil
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, false, fmt.Errorf("container create body: %w", err)
+	}
+	var current []string
+	if raw, ok := doc["Env"]; ok && !bytes.Equal(raw, []byte("null")) {
+		if err := json.Unmarshal(raw, &current); err != nil {
+			return nil, false, fmt.Errorf("Env: %w", err)
+		}
+	}
+	set := map[string]bool{}
+	for _, kv := range current {
+		k, _, _ := strings.Cut(kv, "=")
+		set[k] = true
+	}
+	changed := false
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		if !set[k] {
+			current = append(current, kv)
+			set[k] = true
+			changed = true
+		}
+	}
+	if !changed {
+		return body, false, nil
+	}
+	doc["Env"] = mustMarshal(current)
+	out, err := json.Marshal(doc)
+	return out, true, err
+}
+
 func mustMarshal(v any) json.RawMessage {
 	b, err := json.Marshal(v)
 	if err != nil {

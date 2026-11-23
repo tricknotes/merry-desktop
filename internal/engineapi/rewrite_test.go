@@ -112,3 +112,25 @@ func TestDistroPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestInjectEnv(t *testing.T) {
+	env := []string{"HTTP_PROXY=http://p:8080", "NO_PROXY=localhost"}
+	out, changed, err := InjectEnv([]byte(`{"Image":"x","Env":["NO_PROXY=mine","A=1"]}`), env)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	var doc struct{ Env []string }
+	_ = json.Unmarshal(out, &doc)
+	want := []string{"NO_PROXY=mine", "A=1", "HTTP_PROXY=http://p:8080"}
+	if !reflect.DeepEqual(doc.Env, want) {
+		t.Errorf("Env = %v, want %v (the user's NO_PROXY wins)", doc.Env, want)
+	}
+	out, _, _ = InjectEnv([]byte(`{"Image":"x"}`), env)
+	_ = json.Unmarshal(out, &doc)
+	if len(doc.Env) != 2 {
+		t.Errorf("Env without a list = %v", doc.Env)
+	}
+	if _, changed, _ := InjectEnv([]byte(`{"Image":"x"}`), nil); changed {
+		t.Error("changed with no variables")
+	}
+}
