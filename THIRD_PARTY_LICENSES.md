@@ -13,6 +13,7 @@
 | github.com/wailsapp/wails/v3 | v3.1.0 | MIT |
 | github.com/go-ole/go-ole | v1.3.0 | MIT |
 | github.com/Microsoft/go-winio | v0.6.4 | MIT(名前付きパイプ、F-04) |
+| git.sr.ht/~jackmordaunt/go-toast/v2 | v2.0.3 | MIT または Unlicense(Wails の Windows 通知が使う) |
 | golang.org/x/sys | v0.49.0 | BSD-3-Clause |
 | Go 標準ライブラリ | 1.27.4 | BSD-3-Clause |
 

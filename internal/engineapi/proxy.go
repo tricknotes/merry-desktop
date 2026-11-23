@@ -28,6 +28,12 @@ type Options struct {
 	// example to make sure the paths it binds are mounted. Errors are logged
 	// and the request goes on (the engine then reports what is missing).
 	BeforeCreate func(ctx context.Context) error
+	// WarnSlowBinds adds a warning to the create response for bind mounts
+	// from a Windows drive (I-09).
+	WarnSlowBinds bool
+	// Notify, if set, also receives each warning, for clients that do not show
+	// the create response's warnings (docker compose does not).
+	Notify func(warning string)
 }
 
 // NewProxy returns a handler that forwards every request to the engine at
@@ -65,7 +71,7 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 					log.Warn("before container create", "err", err)
 				}
 			}
-			if translate == nil && len(opts.Env) == 0 {
+			if translate == nil && len(opts.Env) == 0 && !opts.WarnSlowBinds {
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Out.Body, maxCreateBody))
@@ -74,6 +80,19 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 				log.Warn("read container create body", "err", err)
 				r.Out.Body = io.NopCloser(bytes.NewReader(body))
 				return
+			}
+			var warnings []string
+			if opts.WarnSlowBinds {
+				warnings = SlowBindWarnings(body, translate)
+			}
+			if len(warnings) > 0 {
+				log.Info("bind mounts from a Windows drive", "count", len(warnings))
+				r.Out.Header.Set(warningsHeader, encodeWarnings(warnings))
+				if opts.Notify != nil {
+					for _, w := range warnings {
+						opts.Notify(w)
+					}
+				}
 			}
 			rewritten, err := rewriteCreate(body, translate, opts.Env)
 			if err != nil {
@@ -87,6 +106,7 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 			r.Out.Header.Del("Transfer-Encoding")
 			r.Out.TransferEncoding = nil
 		},
+		ModifyResponse: addResponseWarnings,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Warn("engine request failed", "path", r.URL.Path, "err", err)
 			http.Error(w, "container engine is not reachable: "+err.Error(), http.StatusBadGateway)

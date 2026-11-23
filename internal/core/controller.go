@@ -40,16 +40,39 @@ type Controller struct {
 	mu        sync.Mutex
 	state     Snapshot
 	listeners []func(Snapshot)
+	notices   []func(string)
 }
 
 func NewController(backend vm.Backend, log *slog.Logger) *Controller {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Controller{
+	c := &Controller{
 		backend: backend,
 		log:     log,
 		state:   Snapshot{Status: vm.StatusStopped},
+	}
+	if n, ok := backend.(vm.Noticer); ok {
+		n.OnNotice(c.notice)
+	}
+	return c
+}
+
+// OnNotice registers a listener for notices from the VM (for example a slow
+// bind mount warning). Listeners must not block.
+func (c *Controller) OnNotice(listener func(message string)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.notices = append(c.notices, listener)
+}
+
+func (c *Controller) notice(message string) {
+	c.log.Info("notice", "message", message)
+	c.mu.Lock()
+	listeners := append([]func(string){}, c.notices...)
+	c.mu.Unlock()
+	for _, l := range listeners {
+		l(message)
 	}
 }
 

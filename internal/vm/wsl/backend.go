@@ -61,6 +61,7 @@ type Backend struct {
 
 	mu          sync.Mutex
 	integrated  []string        // distros served by the running agent
+	notice      func(string)    // receives the agent's notices
 	contextDone map[string]bool // docker context checked in this run
 	keepalive   StdioProcess    // the engine-agent session (see agent.go)
 	session     *mux.Session

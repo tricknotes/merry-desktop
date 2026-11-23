@@ -69,6 +69,7 @@ docker compose run --rm builder make build  # ビルドだけ
 | F-11 | `internal/vm/wsl/hostnet*.go`、`assets/apply-network.sh`、`engineapi.InjectEnv` |
 | F-12 | `internal/core/registry.go`、`internal/vm/wsl/hostcli.go`(`Login`) |
 | F-14 | `internal/core/diagnostics.go`、`internal/diag`、`internal/vm/wsl/diagnostics.go` |
+| I-09 | `internal/engineapi/warnings.go`(作成の応答の警告)、engine-agent の通知(`notice:`)、アプリの Windows 通知 |
 
 ## 実機で試すとき
 

@@ -1,5 +1,5 @@
 import { bridge } from "./bridge";
-import { showDevNav } from "./native";
+import { showDevNav, showNotices } from "./native";
 import { initBuildProxy } from "./buildproxy";
 import { initIntegrations } from "./integrations";
 import { initRegistries } from "./registry";
@@ -91,6 +91,7 @@ form.addEventListener("submit", async (event) => {
 
 async function init(): Promise<void> {
   showDevNav();
+  showNotices();
   bridge.onChange(show);
   const snapshot = await bridge.getSnapshot();
   show(snapshot);

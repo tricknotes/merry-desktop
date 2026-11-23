@@ -62,3 +62,15 @@ export function showDevNav(): void {
   nav.innerHTML = '開発用 UI: <a href="/">設定</a> | <a href="/setup.html">セットアップ</a>';
   document.body.prepend(nav);
 }
+
+/** Shows notices from the VM (for example a slow bind mount) at the top of the page. */
+export function showNotices(): void {
+  on("vm:notice", (data) => {
+    const box = document.createElement("p");
+    box.className = "notice";
+    box.textContent = String(data);
+    box.addEventListener("click", () => box.remove());
+    box.title = "クリックで閉じる";
+    document.querySelector("main")?.prepend(box);
+  });
+}

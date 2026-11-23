@@ -109,3 +109,11 @@ form.inline {
 button.danger {
   color: crimson;
 }
+
+.notice {
+  border-left: 4px solid darkorange;
+  padding: 6px 10px;
+  margin: 0 0 12px;
+  background: color-mix(in srgb, darkorange 12%, transparent);
+  cursor: pointer;
+}
