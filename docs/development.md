@@ -14,10 +14,39 @@ docker compose run --rm builder make build  # ビルドだけ
 
 | ターゲット | 内容 |
 | --- | --- |
-| `make lint` | シェルスクリプトの shellcheck |
-| `make test` | Go の `vet`(Windows 向け) |
-| `make build` | Windows 向けの実行ファイルを作る |
+| `make lint` | シェルスクリプトの shellcheck と `gofmt` |
+| `make test` | `internal/` の単体テスト(Linux、`-race` 付き)と、Windows 向けの `go vet` |
+| `make build` | `bin/merry-desktop.exe` を作る |
+| `make tidy` | `go mod tidy`(Windows 向けの依存で) |
 | `make clean` | ビルド結果を消す |
+
+`cmd/` のアプリ本体は Windows 向けにだけビルドする。Linux 向けの Wails は GTK が必要で、ビルド用イメージに入れていないため。
+
+## 構成
+
+| パス | 中身 |
+| --- | --- |
+| `cmd/merry-desktop/` | トレイ常駐アプリ(Wails v3)。OS ごとのバックエンドの選択だけを持つ |
+| `internal/core/` | OS に依存しないコア。状態の管理と、VM 操作の直列化 |
+| `internal/vm/` | `Backend` インターフェース(起動 / 停止 / コマンド実行 / 状態取得 / リソース設定) |
+| `internal/vm/wsl/` | WSL2 の実装(`wsl.exe` を呼ぶ) |
+| `internal/vm/stub/` | メモリ上のスタブ(開発とテスト用) |
+| `internal/appinfo/` | アプリ名などの名前。アプリ名が決まったら、ここだけを変える |
+| `frontend/` | 設定ウィンドウ(Vite + TypeScript) |
+
+## 実機で試すとき
+
+アプリが操作する VM(WSL ディストリ)はまだ自動では作らない(F-10 で実装する)。
+フェーズ0のスクリプトで作ったディストリを、環境変数で指定して使う。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\phase0\wsl2\new-engine-distro.ps1 -Name merry-desktop-engine
+# または既存の phase0-engine を使う:
+$env:MERRY_ENGINE_NAME = "phase0-engine"
+.\merry-desktop.exe
+```
+
+CI の成果物 `windows-binaries` に `merry-desktop.exe` が入っている。
 
 Go のモジュール、ビルドキャッシュ、npm のキャッシュは名前付きボリュームに残る。
 キャッシュのない状態で約28秒、2回目以降のビルドは約2.5秒だった(2026-11-23、`phase0-engine` 上)。

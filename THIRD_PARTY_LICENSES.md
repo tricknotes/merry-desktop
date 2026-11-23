@@ -2,6 +2,27 @@
 
 依存を追加したら、ここに追記する。MITと両立しないライセンス(GPL系など)は、追加前に確認を取る。
 
+## アプリ本体
+
+### Go(Windows 版の実行ファイルに入るもの)
+
+`GOOS=windows go list -deps ./cmd/merry-desktop` で集計(2026-11-23)。
+
+| モジュール | 版 | ライセンス |
+| --- | --- | --- |
+| github.com/wailsapp/wails/v3 | v3.1.0 | MIT |
+| github.com/go-ole/go-ole | v1.3.0 | MIT |
+| golang.org/x/sys | v0.48.0 | BSD-3-Clause |
+| Go 標準ライブラリ | 1.27.4 | BSD-3-Clause |
+
+`go.mod` にはほかに macOS / Linux 版でだけ使う間接の依存(coder/websocket、purego、godbus、x/term)があるが、
+Windows 版には入らない。macOS 版を作るとき(フェーズ3)に確認する。
+
+### フロント(`frontend/`)
+
+`spikes/wails/frontend` と同じ構成(`@wailsio/runtime` MIT、Vite MIT、TypeScript Apache-2.0)。
+配布物に入るのは `@wailsio/runtime` だけ。
+
 ## フェーズ0 UIスパイク(`spikes/wails`)
 
 比較のための試作で、配布はしない。採用しなかった Tauri と Electron のスパイクは削除した
