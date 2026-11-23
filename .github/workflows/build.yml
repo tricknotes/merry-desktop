@@ -25,3 +25,30 @@ jobs:
         with:
           name: windows-binaries
           path: bin/
+
+  # Runs the Go tests on Windows, including the code that only works there
+  # (named pipes, the registry, the Windows certificate store). GitHub's Windows
+  # runners have no Smart App Control, so unsigned test binaries run.
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.1.0
+        with:
+          go-version: "1.27.4"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "26.13.1"
+      - name: Build the engine-agent and the frontend (embedded by the packages)
+        shell: bash
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-w -s" -o internal/vm/wsl/assets/engine-agent ./cmd/engine-agent
+          gzip -9 -n -f internal/vm/wsl/assets/engine-agent
+          cd frontend && npm ci && npm run build
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -v ./internal/...
+      - name: Build the app natively
+        run: go build -o merry-desktop.exe ./cmd/merry-desktop
