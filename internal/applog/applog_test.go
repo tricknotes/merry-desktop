@@ -11,7 +11,9 @@ func TestOpenRotates(t *testing.T) {
 	dir := t.TempDir()
 	big := make([]byte, MaxSize+1)
 	_ = os.WriteFile(filepath.Join(dir, "app.log"), big, 0o644)
-	log, closer, err := Open(dir)
+	log, w := New()
+	log.Info("before the file") // stderr only
+	closer, err := w.OpenFile(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +23,7 @@ func TestOpenRotates(t *testing.T) {
 		t.Fatalf("rotated file: %v, %v", fi, err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "app.log"))
-	if !strings.Contains(string(data), "msg=hello") {
+	if !strings.Contains(string(data), "msg=hello") || strings.Contains(string(data), "before the file") {
 		t.Fatalf("new log = %q", data)
 	}
 }
