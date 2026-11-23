@@ -71,6 +71,16 @@ func main() {
 	defer stop()
 
 	cmd, args := global.Arg(0), global.Args()[1:]
+	// Commands that hold the agent session must not run twice for one VM: a
+	// second agent would take over the per-distro sockets of the first.
+	switch cmd {
+	case "setup", "start", "ui":
+		unlock, err := lockVM(backend.Distro)
+		if err != nil {
+			fail(err)
+		}
+		defer unlock()
+	}
 	switch cmd {
 	case "setup":
 		err = setup(ctx, c, backend)

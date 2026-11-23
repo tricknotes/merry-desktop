@@ -5,12 +5,28 @@
 
 ## 使い方
 
+ビルドは、このアプリ自身の VM(開発用 CLI の `merry-dev-engine`)の上で回す。
+`merry-dev start` の間は、この WSL ディストリのパスが engine-agent で変換されるので、
+`compose.yaml` のバインドマウント(`.:/src`)がそのまま使える。
+
 ```bash
-export DEV_UID=$(id -u) DEV_GID=$(id -g)   # できたファイルを自分の所有にする
+# ターミナル A: VM を動かしたままにする(Ctrl+C で終わる)
+./bin/merry-dev start
+```
+
+```bash
+# ターミナル B
+export DOCKER_CONTEXT=merry-dev-engine DEV_UID=$(id -u) DEV_GID=$(id -g)
 docker compose build builder                # 初回だけ(Go 1.27.4 + Node.js 26.13.1)
 docker compose run --rm builder make all    # lint、テスト、ビルド
 docker compose run --rm builder make build  # ビルドだけ
 ```
+
+`merry-dev ui` を使っている間も、同じ VM でビルドできる(`start` の代わりになる)。
+`start`、`ui`、`setup` は、1つの VM に対して同時に1つだけ動く(2つ目はロックで止まる)。
+
+最初の `bin/merry-dev` は、ほかの Engine(Rancher Desktop、Colima など)で `make dev` して作る。
+そのあとは、上の手順で自分自身を作り直せる。
 
 | ターゲット | 内容 |
 | --- | --- |
