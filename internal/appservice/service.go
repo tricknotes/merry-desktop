@@ -121,6 +121,30 @@ func (s *Service) ScanImage(image string) (core.ScanResult, error) {
 	return r, notRunningError(err)
 }
 
+// AutoCleanupEnabled reports whether old build cache and untagged images are
+// removed daily (I-22).
+func (s *Service) AutoCleanupEnabled() (bool, error) {
+	cur, err := s.Settings.Load()
+	return cur.AutoCleanupEnabled(), err
+}
+
+// SetAutoCleanup turns the daily cleanup on or off.
+func (s *Service) SetAutoCleanup(enable bool) error {
+	_, err := s.Settings.Update(func(v *settings.Settings) { v.AutoCleanup = &enable })
+	return err
+}
+
+// CleanupCandidates lists what could be removed to free space in the VM.
+func (s *Service) CleanupCandidates() (core.CleanupReport, error) {
+	r, err := s.Controller.CleanupCandidates(context.Background())
+	return r, notRunningError(err)
+}
+
+// RemoveUnused removes the containers and images the user picked.
+func (s *Service) RemoveUnused(containers, images []string) error {
+	return notRunningError(s.Controller.RemoveUnused(context.Background(), containers, images))
+}
+
 func notRunningError(err error) error {
 	if errors.Is(err, vm.ErrNotRunning) {
 		return errors.New("VM が動いていません")

@@ -85,6 +85,9 @@ func ui(ctx context.Context, c *core.Controller, args []string) error {
 			c.Refresh(context.WithoutCancel(ctx))
 			if ticks++; ticks%6 == 0 {
 				c.CheckMemory(context.WithoutCancel(ctx)) // every minute
+				if s, err := store.Load(); err == nil && s.AutoCleanupEnabled() {
+					c.MaybeAutoCleanup(context.WithoutCancel(ctx)) // at most once a day
+				}
 			}
 		}
 	}

@@ -5,6 +5,7 @@ import { initIntegrations } from "./integrations";
 import { initRegistries } from "./registry";
 import { initUsage } from "./usage";
 import { initScan } from "./scan";
+import { initCleanup } from "./cleanup";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
 
@@ -100,7 +101,7 @@ async function init(): Promise<void> {
   fill(snapshot.resources);
   initUsage();
   initScan();
-  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy()]);
+  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy(), initCleanup()]);
 }
 
 void init();
