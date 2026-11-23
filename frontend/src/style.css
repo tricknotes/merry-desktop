@@ -117,3 +117,19 @@ button.danger {
   background: color-mix(in srgb, darkorange 12%, transparent);
   cursor: pointer;
 }
+
+.usage {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.usage th,
+.usage td {
+  padding: 2px 12px 2px 0;
+  text-align: left;
+}
+
+.usage td:not(:first-child),
+.usage th:not(:first-child) {
+  text-align: right;
+}

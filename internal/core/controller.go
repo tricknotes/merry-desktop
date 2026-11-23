@@ -41,6 +41,8 @@ type Controller struct {
 	state     Snapshot
 	listeners []func(Snapshot)
 	notices   []func(string)
+	// memoryHigh is true after a memory pressure notice, until the use drops.
+	memoryHigh bool
 }
 
 func NewController(backend vm.Backend, log *slog.Logger) *Controller {

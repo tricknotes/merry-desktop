@@ -102,6 +102,16 @@ func (s *Service) SetIntegrations(names []string) error {
 	return err
 }
 
+// ProjectUsage reads the CPU and memory use of the running containers per
+// Compose project (I-07).
+func (s *Service) ProjectUsage() (core.Usage, error) {
+	u, err := s.Controller.ProjectUsage(context.Background())
+	if errors.Is(err, vm.ErrNotRunning) {
+		return u, errors.New("VM が動いていません")
+	}
+	return u, err
+}
+
 // BuildProxyEnabled reports whether the proxy is written into the docker CLI
 // configs for builds (C-4).
 func (s *Service) BuildProxyEnabled() (bool, error) {
