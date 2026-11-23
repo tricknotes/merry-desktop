@@ -64,3 +64,32 @@ button {
 .steps li[data-state="failed"] .mark,
 .steps li[data-state="failed"] .detail { color: crimson; }
 .steps .detail { margin-left: 1.5em; }
+
+h2 {
+  font-size: 1rem;
+  margin: 20px 0 8px;
+}
+
+.registries {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: grid;
+  gap: 4px;
+}
+
+.registries li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.registries li span {
+  flex: 1;
+}
+
+form.inline {
+  display: flex;
+  gap: 8px;
+  max-width: none;
+}

@@ -27,6 +27,27 @@
         <button type="submit">保存</button>
       </form>
       <p id="message" role="status"></p>
+
+      <h2>社内レジストリ</h2>
+      <p class="hint">ログイン情報は Windows の資格情報マネージャーに保存されます。</p>
+      <ul id="registries" class="registries"></ul>
+      <form id="add-registry" class="inline">
+        <input id="registry" name="registry" placeholder="registry.example.com" />
+        <button type="submit">追加</button>
+      </form>
+      <form id="login" hidden>
+        <p>ログイン: <strong id="login-server"></strong></p>
+        <label>
+          ユーザー名
+          <input id="username" name="username" autocomplete="username" required />
+        </label>
+        <label>
+          パスワード(またはトークン)
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">ログイン</button>
+      </form>
+      <p id="registry-message" role="status"></p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
