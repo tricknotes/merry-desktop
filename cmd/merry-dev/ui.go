@@ -75,6 +75,7 @@ func ui(ctx context.Context, c *core.Controller, args []string) error {
 	c.Refresh(ctx)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	ticks := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -82,6 +83,9 @@ func ui(ctx context.Context, c *core.Controller, args []string) error {
 			return nil
 		case <-ticker.C:
 			c.Refresh(context.WithoutCancel(ctx))
+			if ticks++; ticks%6 == 0 {
+				c.CheckMemory(context.WithoutCancel(ctx)) // every minute
+			}
 		}
 	}
 }

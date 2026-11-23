@@ -30,6 +30,10 @@ import (
 // changes made outside the app (for example `wsl --shutdown`).
 const refreshInterval = 10 * time.Second
 
+// memoryCheckEvery is how many refreshes pass between memory pressure checks
+// (I-07): once a minute.
+const memoryCheckEvery = 6
+
 var statusLabels = map[vm.Status]string{
 	vm.StatusStopped:  "停止中",
 	vm.StatusStarting: "起動中",
@@ -235,8 +239,12 @@ func backgroundLoop(controller *core.Controller, store *settings.Store, logger *
 	}
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
-	for range ticker.C {
+	for i := 1; ; i++ {
+		<-ticker.C
 		controller.Refresh(ctx)
+		if i%memoryCheckEvery == 0 {
+			controller.CheckMemory(ctx)
+		}
 	}
 }
 
