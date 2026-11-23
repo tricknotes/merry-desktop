@@ -54,8 +54,14 @@ func (s *VMService) GetSnapshot() core.Snapshot {
 	return s.controller.Snapshot()
 }
 
-func (s *VMService) SetResources(resources vm.Resources) error {
-	err := s.controller.SetResources(context.Background(), resources)
+// PlanResources tells the settings window what saving would involve (F-03).
+func (s *VMService) PlanResources(resources vm.Resources) (vm.ResourcePlan, error) {
+	return s.controller.PlanResources(context.Background(), resources)
+}
+
+// ApplyResources saves the resources and, with restartNow, restarts what is needed.
+func (s *VMService) ApplyResources(resources vm.Resources, restartNow bool) error {
+	err := s.controller.ApplyResources(context.Background(), resources, restartNow)
 	if errors.Is(err, vm.ErrNotSupported) {
 		return errors.New("この環境では、まだ変更できません")
 	}
@@ -96,7 +102,7 @@ func main() {
 			Name:   "settings",
 			Title:  appinfo.DisplayName + " - 設定",
 			Width:  380,
-			Height: 360,
+			Height: 480,
 			URL:    "/",
 		})
 		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
@@ -162,6 +168,9 @@ func main() {
 	}
 
 	go func() {
+		if err := controller.LoadResources(context.Background()); err != nil {
+			logger.Warn("load resources", "err", err)
+		}
 		controller.Refresh(context.Background())
 		if *launchedAtLogin && controller.Snapshot().Status == vm.StatusStopped {
 			controller.Start(context.Background())

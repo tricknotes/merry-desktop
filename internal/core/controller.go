@@ -37,7 +37,7 @@ func NewController(backend vm.Backend, log *slog.Logger) *Controller {
 	return &Controller{
 		backend: backend,
 		log:     log,
-		state:   Snapshot{Status: vm.StatusStopped, Resources: vm.Resources{CPUs: 2, MemoryMiB: 4096}},
+		state:   Snapshot{Status: vm.StatusStopped},
 	}
 }
 
@@ -153,12 +153,70 @@ func (c *Controller) Refresh(ctx context.Context) {
 	}
 }
 
-// SetResources stores new resource limits through the backend.
-func (c *Controller) SetResources(ctx context.Context, r vm.Resources) error {
+// LoadResources reads the configured resources from the backend, if it can.
+func (c *Controller) LoadResources(ctx context.Context) error {
+	rm, ok := c.backend.(vm.ResourceManager)
+	if !ok {
+		return nil
+	}
+	r, err := rm.CurrentResources(ctx)
+	if err != nil {
+		return err
+	}
+	c.update(func(s *Snapshot) { s.Resources = r })
+	return nil
+}
+
+// PlanResources says whether applying r needs a restart (F-03), so the UI can
+// ask before saving.
+func (c *Controller) PlanResources(ctx context.Context, r vm.Resources) (vm.ResourcePlan, error) {
+	if err := r.Validate(); err != nil {
+		return vm.ResourcePlan{}, err
+	}
+	rm, ok := c.backend.(vm.ResourceManager)
+	if !ok {
+		return vm.ResourcePlan{}, nil
+	}
+	return rm.PlanResources(ctx, r)
+}
+
+// ApplyResources saves r. With restartNow, it also restarts what the change
+// needs: every VM of the kind (plan.RestartHost) or only this VM. Without it,
+// the change takes effect on the next restart.
+func (c *Controller) ApplyResources(ctx context.Context, r vm.Resources, restartNow bool) error {
+	plan, err := c.PlanResources(ctx, r)
+	if err != nil {
+		return err
+	}
 	if err := c.backend.SetResources(ctx, r); err != nil {
 		return err
 	}
 	c.update(func(s *Snapshot) { s.Resources = r })
+	if !restartNow || !plan.RestartVM {
+		return nil
+	}
+	if !c.begin() {
+		return errors.New("another operation is in progress; restart later to apply")
+	}
+	defer c.end()
+	if rm, ok := c.backend.(vm.ResourceManager); ok && plan.RestartHost {
+		c.setStatus(vm.StatusStarting, "")
+		if err := rm.RestartHost(ctx); err != nil {
+			c.log.Error("restart host failed", "err", err)
+			c.setStatus(vm.StatusError, describe(err))
+			return err
+		}
+		status, err := c.backend.Status(ctx)
+		if err != nil {
+			c.setStatus(vm.StatusError, describe(err))
+			return err
+		}
+		c.setStatus(status, "")
+		return nil
+	}
+	if c.Snapshot().Status == vm.StatusRunning && c.stop(ctx) {
+		c.start(ctx)
+	}
 	return nil
 }
 

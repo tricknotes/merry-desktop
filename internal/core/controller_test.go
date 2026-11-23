@@ -118,16 +118,87 @@ func TestRefreshPicksUpExternalChange(t *testing.T) {
 	}
 }
 
-func TestSetResourcesValidates(t *testing.T) {
+func TestApplyResourcesValidates(t *testing.T) {
 	c := NewController(newStub(), nil)
-	if err := c.SetResources(context.Background(), vm.Resources{CPUs: 0, MemoryMiB: 4096}); err == nil {
+	ctx := context.Background()
+	if err := c.ApplyResources(ctx, vm.Resources{CPUs: -1}, false); err == nil {
 		t.Fatal("want validation error")
 	}
 	ok := vm.Resources{CPUs: 4, MemoryMiB: 8192}
-	if err := c.SetResources(context.Background(), ok); err != nil {
+	if err := c.ApplyResources(ctx, ok, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.Snapshot().Resources; got != ok {
+		t.Fatalf("resources = %+v", got)
+	}
+}
+
+// managed is a stub with a ResourceManager whose plan is fixed.
+type managed struct {
+	*stub.Backend
+	plan         vm.ResourcePlan
+	hostRestarts int
+	current      vm.Resources
+}
+
+func (m *managed) CurrentResources(context.Context) (vm.Resources, error) { return m.current, nil }
+func (m *managed) PlanResources(context.Context, vm.Resources) (vm.ResourcePlan, error) {
+	return m.plan, nil
+}
+func (m *managed) RestartHost(ctx context.Context) error {
+	m.hostRestarts++
+	if err := m.Backend.Stop(ctx); err != nil {
+		return err
+	}
+	return m.Backend.Start(ctx)
+}
+
+func TestApplyResourcesRestartsHostOnlyWhenAsked(t *testing.T) {
+	m := &managed{Backend: newStub(), plan: vm.ResourcePlan{RestartVM: true, RestartHost: true}}
+	c := NewController(m, nil)
+	ctx := context.Background()
+	c.Start(ctx)
+
+	if err := c.ApplyResources(ctx, vm.Resources{CPUs: 2}, false); err != nil {
+		t.Fatal(err)
+	}
+	if m.hostRestarts != 0 {
+		t.Fatalf("restarted without being asked")
+	}
+	if err := c.ApplyResources(ctx, vm.Resources{CPUs: 4}, true); err != nil {
+		t.Fatal(err)
+	}
+	if m.hostRestarts != 1 {
+		t.Fatalf("hostRestarts = %d, want 1", m.hostRestarts)
+	}
+	if s := c.Snapshot(); s.Status != vm.StatusRunning {
+		t.Fatalf("status after host restart = %q", s.Status)
+	}
+}
+
+func TestApplyResourcesRestartsOnlyTheVM(t *testing.T) {
+	m := &managed{Backend: newStub(), plan: vm.ResourcePlan{RestartVM: true}}
+	c := NewController(m, nil)
+	rec := &recorder{}
+	ctx := context.Background()
+	c.Start(ctx)
+	c.OnChange(rec.add)
+	if err := c.ApplyResources(ctx, vm.Resources{DiskGiB: 64}, true); err != nil {
+		t.Fatal(err)
+	}
+	want := []vm.Status{vm.StatusRunning, vm.StatusStopped, vm.StatusStarting, vm.StatusRunning}
+	if got := rec.get(); !equal(got, want) || m.hostRestarts != 0 {
+		t.Fatalf("statuses = %v (host restarts %d), want %v", got, m.hostRestarts, want)
+	}
+}
+
+func TestLoadResources(t *testing.T) {
+	m := &managed{Backend: newStub(), current: vm.Resources{CPUs: 6, MemoryMiB: 12288}}
+	c := NewController(m, nil)
+	if err := c.LoadResources(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Snapshot().Resources; got != m.current {
 		t.Fatalf("resources = %+v", got)
 	}
 }

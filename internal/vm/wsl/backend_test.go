@@ -3,6 +3,7 @@ package wsl
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -26,13 +27,15 @@ func (p *fakeProcess) Done() <-chan struct{} { return p.done }
 
 // fakeRunner answers wsl.exe invocations from a table of handlers.
 type fakeRunner struct {
-	mu       sync.Mutex
-	state    string // STATE of test-engine; "" means not installed
-	readyIn  int    // engine answers after this many checks
-	checks   int
-	calls    []string
-	started  []*fakeProcess
-	startErr error
+	mu        sync.Mutex
+	state     string // STATE of test-engine; "" means not installed
+	readyIn   int    // engine answers after this many checks
+	checks    int
+	calls     []string
+	started   []*fakeProcess
+	startErr  error
+	resized   []string
+	shutdowns int
 }
 
 func (f *fakeRunner) Run(_ context.Context, args ...string) (Result, error) {
@@ -52,6 +55,18 @@ func (f *fakeRunner) Run(_ context.Context, args ...string) (Result, error) {
 			return Result{Stdout: "29.10.0\n"}, nil
 		}
 		return Result{ExitCode: 1, Stderr: "Cannot connect"}, nil
+	case strings.HasPrefix(joined, "--manage test-engine --resize "):
+		if f.state == "Running" {
+			return Result{ExitCode: 1, Stderr: "distro is running"}, nil
+		}
+		f.resized = append(f.resized, strings.TrimPrefix(joined, "--manage test-engine --resize "))
+		return Result{}, nil
+	case joined == "--shutdown":
+		f.shutdowns++
+		if f.state != "" {
+			f.state = "Stopped"
+		}
+		return Result{}, nil
 	case strings.HasPrefix(joined, "--terminate "):
 		f.state = "Stopped"
 		return Result{}, nil
@@ -76,8 +91,13 @@ func (f *fakeRunner) Start(args ...string) (Process, error) {
 	return p, nil
 }
 
-func newTestBackend(f *fakeRunner) *Backend {
-	return &Backend{Distro: "test-engine", Runner: f, ReadyTimeout: time.Second, PollInterval: time.Millisecond}
+func newTestBackend(t *testing.T, f *fakeRunner) *Backend {
+	dir := t.TempDir()
+	return &Backend{
+		Distro: "test-engine", Runner: f, ReadyTimeout: time.Second, PollInterval: time.Millisecond,
+		ConfigPath: filepath.Join(dir, ".wslconfig"), StatePath: filepath.Join(dir, "state", "wsl-state.json"),
+		MaxCPUs: 8, Now: func() time.Time { return time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC) },
+	}
 }
 
 func TestParseList(t *testing.T) {
@@ -95,7 +115,7 @@ func TestParseList(t *testing.T) {
 
 func TestStartWaitsForEngineAndKeepsSessionOpen(t *testing.T) {
 	f := &fakeRunner{state: "Stopped", readyIn: 3}
-	b := newTestBackend(f)
+	b := newTestBackend(t, f)
 	if err := b.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -115,7 +135,7 @@ func TestStartWaitsForEngineAndKeepsSessionOpen(t *testing.T) {
 }
 
 func TestStartNotProvisioned(t *testing.T) {
-	b := newTestBackend(&fakeRunner{})
+	b := newTestBackend(t, &fakeRunner{})
 	if err := b.Start(context.Background()); !errors.Is(err, vm.ErrNotProvisioned) {
 		t.Fatalf("Start error = %v, want ErrNotProvisioned", err)
 	}
@@ -123,7 +143,7 @@ func TestStartNotProvisioned(t *testing.T) {
 
 func TestStartTimesOut(t *testing.T) {
 	f := &fakeRunner{state: "Stopped", readyIn: 1 << 30}
-	b := newTestBackend(f)
+	b := newTestBackend(t, f)
 	b.ReadyTimeout = 20 * time.Millisecond
 	err := b.Start(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "did not respond") {
@@ -133,7 +153,7 @@ func TestStartTimesOut(t *testing.T) {
 
 func TestStopEndsKeepaliveAndTerminates(t *testing.T) {
 	f := &fakeRunner{state: "Stopped"}
-	b := newTestBackend(f)
+	b := newTestBackend(t, f)
 	if err := b.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +184,7 @@ func TestStatus(t *testing.T) {
 		{state: "", want: vm.StatusError, wantErr: vm.ErrNotProvisioned},
 	}
 	for _, c := range cases {
-		b := newTestBackend(&fakeRunner{state: c.state, readyIn: c.readyIn})
+		b := newTestBackend(t, &fakeRunner{state: c.state, readyIn: c.readyIn})
 		got, err := b.Status(context.Background())
 		if got != c.want || !errors.Is(err, c.wantErr) {
 			t.Errorf("state %q: Status = %q, %v; want %q, %v", c.state, got, err, c.want, c.wantErr)
@@ -173,7 +193,7 @@ func TestStatus(t *testing.T) {
 }
 
 func TestExec(t *testing.T) {
-	b := newTestBackend(&fakeRunner{state: "Running"})
+	b := newTestBackend(t, &fakeRunner{state: "Running"})
 	res, err := b.Exec(context.Background(), []string{"echo", "hello"})
 	if err != nil || res.ExitCode != 0 || res.Stdout != "hello\n" {
 		t.Fatalf("Exec = %+v, %v", res, err)
@@ -182,7 +202,7 @@ func TestExec(t *testing.T) {
 	if err != nil || res.ExitCode != 1 {
 		t.Fatalf("Exec false = %+v, %v; want exit 1 without error", res, err)
 	}
-	stopped := newTestBackend(&fakeRunner{state: "Stopped"})
+	stopped := newTestBackend(t, &fakeRunner{state: "Stopped"})
 	if _, err := stopped.Exec(context.Background(), []string{"echo"}); !errors.Is(err, vm.ErrNotRunning) {
 		t.Fatalf("Exec on stopped VM error = %v, want ErrNotRunning", err)
 	}

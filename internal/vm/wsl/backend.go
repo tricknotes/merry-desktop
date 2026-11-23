@@ -25,6 +25,12 @@ type Backend struct {
 	ReadyTimeout time.Duration
 	// PollInterval is the wait between engine checks during Start.
 	PollInterval time.Duration
+	// ConfigPath is %UserProfile%\.wslconfig. StatePath stores the disk limit.
+	ConfigPath string
+	StatePath  string
+	// MaxCPUs and Now are for tests; zero values mean the real machine.
+	MaxCPUs int
+	Now     func() time.Time
 
 	mu        sync.Mutex
 	keepalive Process
@@ -39,6 +45,8 @@ func New(distro string) *Backend {
 		Runner:       ExecRunner{},
 		ReadyTimeout: 60 * time.Second,
 		PollInterval: 250 * time.Millisecond,
+		ConfigPath:   defaultConfigPath(),
+		StatePath:    defaultStatePath(distro),
 	}
 }
 
@@ -81,8 +89,15 @@ func (b *Backend) keepaliveRunning() bool {
 }
 
 func (b *Backend) Start(ctx context.Context) error {
-	if _, err := b.lookup(ctx); err != nil {
+	d, err := b.lookup(ctx)
+	if err != nil {
 		return err
+	}
+	if d.State == stateStopped {
+		// The disk limit can only change while the distro is stopped (F-03).
+		if err := b.applyPendingDisk(ctx); err != nil {
+			return err
+		}
 	}
 
 	b.mu.Lock()
@@ -169,14 +184,4 @@ func (b *Backend) Status(ctx context.Context) (vm.Status, error) {
 		// Installing, converting or uninstalling: not usable right now.
 		return vm.StatusStarting, nil
 	}
-}
-
-// SetResources is not implemented yet. On WSL2, CPU and memory are settings of
-// the whole WSL VM (%UserProfile%\.wslconfig) and affect the user's other
-// distros; the behavior is being decided as part of F-03.
-func (b *Backend) SetResources(_ context.Context, r vm.Resources) error {
-	if err := r.Validate(); err != nil {
-		return err
-	}
-	return vm.ErrNotSupported
 }
