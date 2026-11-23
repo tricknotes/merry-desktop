@@ -64,6 +64,9 @@ var (
 	ErrNotProvisioned = errors.New("vm is not set up")
 	// ErrNotSupported is returned for operations a backend cannot do (yet).
 	ErrNotSupported = errors.New("not supported by this backend")
+	// ErrHostNotReady wraps errors from Provisioner.CheckHost. The wrapping
+	// error's message tells the user what to do.
+	ErrHostNotReady = errors.New("this machine is not ready to run the VM")
 )
 
 // Backend holds the OS-specific VM operations.
@@ -96,4 +99,42 @@ func (r Resources) Validate() error {
 		return errors.New("diskGiB must be 0 (default) or >= 16")
 	}
 	return nil
+}
+
+// Network is how the VM reaches the outside (F-11).
+type Network struct {
+	// ProxyURL is used for HTTP and HTTPS. It may contain credentials and must
+	// never be logged; use Redacted for display.
+	ProxyURL string `json:"-"`
+	NoProxy  string `json:"noProxy"`
+	// CACertsPEM are extra trusted certificates (PEM), such as a corporate CA.
+	CACertsPEM []byte `json:"-"`
+	// Note explains something the user should know (for example: a PAC file
+	// is configured but not evaluated).
+	Note string `json:"note"`
+}
+
+// SetupStep identifies a step of the setup wizard (F-10).
+type SetupStep string
+
+const (
+	StepCheckHost SetupStep = "check"
+	StepNetwork   SetupStep = "network"
+	StepCreate    SetupStep = "create"
+	StepStart     SetupStep = "start"
+	StepVerify    SetupStep = "verify"
+)
+
+// Provisioner is implemented by backends that can create their VM.
+type Provisioner interface {
+	// CheckHost reports whether this machine can run the VM. The error explains
+	// what the user has to do (it may need an administrator).
+	CheckHost(ctx context.Context) error
+	// DetectNetwork reads the proxy and CA settings of the host.
+	DetectNetwork(ctx context.Context) (Network, error)
+	// Provisioned reports whether the VM exists.
+	Provisioned(ctx context.Context) (bool, error)
+	// Provision creates the VM with the container engine. progress receives
+	// short, user-facing lines; it must not block.
+	Provision(ctx context.Context, network Network, progress func(string)) error
 }

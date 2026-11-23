@@ -45,9 +45,17 @@ func engineName() string {
 // the VM, so that `docker` works right after login without opening the tray.
 const autostartArg = "--autostart"
 
-// VMService is bound to the settings window.
+// VMService is bound to the settings and setup windows.
 type VMService struct {
 	controller *core.Controller
+	emit       func(name string, data any)
+}
+
+// RunSetup runs the setup wizard (F-10) and reports progress as "setup:event".
+func (s *VMService) RunSetup() error {
+	return s.controller.Setup(context.Background(), func(e core.SetupEvent) {
+		s.emit("setup:event", e)
+	})
 }
 
 func (s *VMService) GetSnapshot() core.Snapshot {
@@ -74,10 +82,11 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	controller := core.NewController(newBackend(), logger)
+	service := &VMService{controller: controller}
 
 	app := application.New(application.Options{
 		Name:     appinfo.DisplayName,
-		Services: []application.Service{application.NewService(&VMService{controller: controller})},
+		Services: []application.Service{application.NewService(service)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(frontend.Dist),
 		},
@@ -86,32 +95,14 @@ func main() {
 		Linux:   application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 	})
 
-	var (
-		settingsMu sync.Mutex
-		settings   *application.WebviewWindow
-	)
-	openSettings := func() {
-		settingsMu.Lock()
-		defer settingsMu.Unlock()
-		if settings != nil {
-			settings.Show()
-			settings.Focus()
-			return
-		}
-		window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Name:   "settings",
-			Title:  appinfo.DisplayName + " - 設定",
-			Width:  380,
-			Height: 480,
-			URL:    "/",
-		})
-		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
-			settingsMu.Lock()
-			defer settingsMu.Unlock()
-			settings = nil
-		})
-		settings = window
-	}
+	service.emit = func(name string, data any) { app.Event.Emit(name, data) }
+
+	openSettings := singleWindow(app, application.WebviewWindowOptions{
+		Name: "settings", Title: appinfo.DisplayName + " - 設定", Width: 380, Height: 480, URL: "/",
+	})
+	openSetup := singleWindow(app, application.WebviewWindowOptions{
+		Name: "setup", Title: appinfo.DisplayName + " - セットアップ", Width: 480, Height: 560, URL: "/setup.html",
+	})
 
 	// VM operations block (Start waits for the engine), so run them off the UI thread.
 	run := func(op func(context.Context)) {
@@ -126,6 +117,7 @@ func main() {
 	stopItem := menu.Add("停止").OnClick(func(*application.Context) { run(controller.Stop) })
 	restartItem := menu.Add("再起動").OnClick(func(*application.Context) { run(controller.Restart) })
 	menu.AddSeparator()
+	menu.Add("セットアップ...").OnClick(func(*application.Context) { openSetup() })
 	menu.Add("設定を開く").OnClick(func(*application.Context) { openSettings() })
 	autostartItem := menu.AddCheckbox("ログイン時に起動", false)
 	autostartItem.OnClick(func(ctx *application.Context) {
@@ -167,20 +159,10 @@ func main() {
 		logger.Warn("autostart status", "err", err)
 	}
 
-	go func() {
-		if err := controller.LoadResources(context.Background()); err != nil {
-			logger.Warn("load resources", "err", err)
-		}
-		controller.Refresh(context.Background())
-		if *launchedAtLogin && controller.Snapshot().Status == vm.StatusStopped {
-			controller.Start(context.Background())
-		}
-		ticker := time.NewTicker(refreshInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			controller.Refresh(context.Background())
-		}
-	}()
+	// Start the background work once the app is up, so that windows can be opened.
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		go backgroundLoop(controller, logger, openSetup, *launchedAtLogin)
+	})
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
@@ -196,4 +178,55 @@ func setAutostart(app *application.App, enabled bool) error {
 		Identifier: appinfo.ID,
 		Arguments:  []string{autostartArg},
 	})
+}
+
+// singleWindow returns a function that shows the window, creating it on first
+// use and again after it was closed (windows are destroyed on close).
+func singleWindow(app *application.App, opts application.WebviewWindowOptions) func() {
+	var (
+		mu     sync.Mutex
+		window *application.WebviewWindow
+	)
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if window != nil {
+			window.Show()
+			window.Focus()
+			return
+		}
+		w := app.Window.NewWithOptions(opts)
+		w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			mu.Lock()
+			defer mu.Unlock()
+			window = nil
+		})
+		window = w
+	}
+}
+
+// backgroundLoop loads the settings, guides a first run to the setup window,
+// starts the VM after login (F-05) and keeps the tray status fresh.
+func backgroundLoop(controller *core.Controller, logger *slog.Logger, openSetup func(), launchedAtLogin bool) {
+	ctx := context.Background()
+	if err := controller.LoadResources(ctx); err != nil {
+		logger.Warn("load resources", "err", err)
+	}
+	needSetup, err := controller.NeedsSetup(ctx)
+	if err != nil {
+		logger.Warn("check setup", "err", err)
+	}
+	if needSetup {
+		// First run: guide the user instead of only showing an error icon.
+		openSetup()
+	}
+	controller.Refresh(ctx)
+	if launchedAtLogin && !needSetup && controller.Snapshot().Status == vm.StatusStopped {
+		controller.Start(ctx)
+	}
+	ticker := time.NewTicker(refreshInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		controller.Refresh(ctx)
+	}
 }

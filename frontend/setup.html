@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>セットアップ</title>
+  </head>
+  <body>
+    <main>
+      <h1>セットアップ</h1>
+      <p class="hint">WSL2 の確認から hello-world の実行まで、順に進めます。初回は数分かかります。</p>
+      <ol id="steps" class="steps">
+        <li data-step="check"><span class="mark"></span>WSL2 の確認<p class="detail"></p></li>
+        <li data-step="network"><span class="mark"></span>プロキシと証明書<p class="detail"></p></li>
+        <li data-step="create"><span class="mark"></span>VM の作成<p class="detail"></p></li>
+        <li data-step="start"><span class="mark"></span>VM の起動<p class="detail"></p></li>
+        <li data-step="verify"><span class="mark"></span>動作確認(hello-world)<p class="detail"></p></li>
+      </ol>
+      <button id="run" type="button">開始</button>
+      <p id="result" role="status"></p>
+    </main>
+    <script type="module" src="/src/setup.ts"></script>
+  </body>
+</html>

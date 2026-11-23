@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,14 @@ type Backend struct {
 	MaxCPUs int
 	Now     func() time.Time
 
+	// Provisioning (F-10). InstallRoot holds the distro disk and the download
+	// cache (%LOCALAPPDATA%\<distro>). HTTPClient nil means a client that uses
+	// the detected proxy.
+	InstallRoot  string
+	RootfsURL    string
+	RootfsSHA256 string
+	HTTPClient   *http.Client
+
 	mu        sync.Mutex
 	keepalive Process
 }
@@ -47,6 +56,9 @@ func New(distro string) *Backend {
 		PollInterval: 250 * time.Millisecond,
 		ConfigPath:   defaultConfigPath(),
 		StatePath:    defaultStatePath(distro),
+		InstallRoot:  defaultInstallRoot(distro),
+		RootfsURL:    alpineURL(),
+		RootfsSHA256: alpineSHA256,
 	}
 }
 
