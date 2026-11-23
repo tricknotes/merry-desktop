@@ -39,6 +39,9 @@ var agentSHA256 = func() string {
 func (b *Backend) agentCommand(distros []string) []string {
 	args := []string{agentPath, "stdio", "--engine-socket", "/var/run/docker.sock",
 		"--distro-root", b.distroRoot(), "--run-dir", b.runDir(), "--proxy-env", "/etc/engine/proxy.env", "--log-file", agentLog}
+	if b.ContainerCA {
+		args = append(args, "--ca-bundle", vmCABundle)
+	}
 	for _, d := range distros {
 		args = append(args, "--distro", d)
 	}

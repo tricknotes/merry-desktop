@@ -26,6 +26,9 @@ type Settings struct {
 	// AutoCleanup turns the daily cleanup of old build cache and untagged
 	// images on or off (I-22). nil means on.
 	AutoCleanup *bool `json:"autoCleanup,omitempty"`
+	// ContainerCA gives new containers the CA bundle with the host's
+	// certificates (F-11). Off by default: it changes what containers see.
+	ContainerCA bool `json:"containerCA,omitempty"`
 }
 
 // AutoCleanupEnabled reports whether the daily cleanup runs.

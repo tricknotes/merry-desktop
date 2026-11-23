@@ -50,3 +50,29 @@ func TestApplyNetwork(t *testing.T) {
 		t.Fatalf("changed: changed=%v err=%v applied=%d", changed, err, len(applied))
 	}
 }
+
+func TestSetContainerCAReconnects(t *testing.T) {
+	f := &fakeRunner{state: "Stopped"}
+	b := newTestBackend(t, f)
+	ctx := context.Background()
+	if err := b.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetContainerCA(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetContainerCA(ctx, true); err != nil { // no change: no reconnect
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var sessions []string
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "start: ") && strings.Contains(c, " stdio ") {
+			sessions = append(sessions, c)
+		}
+	}
+	if len(sessions) != 2 || strings.Contains(sessions[0], "--ca-bundle") || !strings.Contains(sessions[1], "--ca-bundle "+vmCABundle) {
+		t.Fatalf("agent sessions = %q", sessions)
+	}
+}
