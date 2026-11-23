@@ -24,4 +24,4 @@ jobs:
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-binaries
-          path: spikes/wails/bin/
+          path: bin/

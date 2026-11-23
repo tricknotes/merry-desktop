@@ -15,6 +15,7 @@ Docker実行環境を社内配布するための、自作デスクトップア�
 フェーズ0(技術検証)の終盤。
 0-2 は完了し、UI実装技術は Go + Wails v3 に決まった(`docs/phase0-ui-comparison.md`)。
 0-3 は、VPN 接続中の疎通と Windows 版 `docker.exe` での確認を除いて検証した(`docs/phase0-wsl2-backend.md`)。この2つは人間の確認待ち。
+フェーズ1(Windows MVP)に着手した。ビルドは Docker Compose 経由(`docs/development.md`)、動作確認は CI のみで行う。
 
 ## 最初のタスク: フェーズ0
 
