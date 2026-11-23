@@ -43,6 +43,21 @@
       <p id="usage-message" class="hint"></p>
       <p class="controls"><button id="usage-refresh" type="button">更新</button></p>
 
+      <h2>イメージの脆弱性スキャン</h2>
+      <p class="hint">この VM にあるイメージを Trivy で調べます。初回は脆弱性データベースのダウンロードに時間がかかります。</p>
+      <form id="scan" class="inline">
+        <input id="scan-image" name="image" list="scan-images" placeholder="nginx:latest" required />
+        <datalist id="scan-images"></datalist>
+        <button type="submit">スキャン</button>
+      </form>
+      <p id="scan-message" role="status"></p>
+      <table id="scan-result" class="usage scan" hidden>
+        <thead>
+          <tr><th>深刻度</th><th>ID</th><th>パッケージ</th><th>現在の版</th><th>修正版</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
       <h2>WSL との連携</h2>
       <p class="hint">チェックしたディストリの docker CLI から、この VM を使えます(ディストリのファイルのバインドマウントも使えます)。</p>
       <ul id="integrations" class="registries"></ul>

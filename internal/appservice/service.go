@@ -106,10 +106,26 @@ func (s *Service) SetIntegrations(names []string) error {
 // Compose project (I-07).
 func (s *Service) ProjectUsage() (core.Usage, error) {
 	u, err := s.Controller.ProjectUsage(context.Background())
+	return u, notRunningError(err)
+}
+
+// LocalImages lists the images in the engine, to pick one to scan (I-02).
+func (s *Service) LocalImages() ([]string, error) {
+	images, err := s.Controller.LocalImages(context.Background())
+	return images, notRunningError(err)
+}
+
+// ScanImage scans a local image for known vulnerabilities with Trivy (I-02).
+func (s *Service) ScanImage(image string) (core.ScanResult, error) {
+	r, err := s.Controller.ScanImage(context.Background(), image)
+	return r, notRunningError(err)
+}
+
+func notRunningError(err error) error {
 	if errors.Is(err, vm.ErrNotRunning) {
-		return u, errors.New("VM が動いていません")
+		return errors.New("VM が動いていません")
 	}
-	return u, err
+	return err
 }
 
 // BuildProxyEnabled reports whether the proxy is written into the docker CLI

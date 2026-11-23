@@ -133,3 +133,13 @@ button.danger {
 .usage th:not(:first-child) {
   text-align: right;
 }
+
+.scan td:not(:first-child),
+.scan th:not(:first-child) {
+  text-align: left;
+}
+
+.scan tr[data-severity="CRITICAL"] td:first-child,
+.scan tr[data-severity="HIGH"] td:first-child {
+  font-weight: bold;
+}

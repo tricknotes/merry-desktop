@@ -38,6 +38,12 @@ Go 標準ライブラリ(BSD-3-Clause)と、このリポジトリのコードだ
 | Docker Compose(Windows) | v5.8.0 | Apache-2.0 | `%USERPROFILE%\.docker\cli-plugins\docker-compose.exe`(なければ) |
 | docker-credential-wincred(docker/docker-credential-helpers) | v0.9.13 | MIT | `%LOCALAPPDATA%\<VM名>\bin`(F-12) |
 
+### 使うときに VM 内で取得するもの
+
+| ソフトウェア | 版 | ライセンス | 入り方 |
+| --- | --- | --- | --- |
+| Trivy(`aquasec/trivy` イメージ) | 0.76.2(ダイジェスト固定) | Apache-2.0 | イメージのスキャン(I-02)を実行したときに pull する。配布物には入らない |
+
 どれも Docker Desktop のものではない。
 
 ### フロント(`frontend/`)
