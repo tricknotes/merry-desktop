@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -35,11 +36,19 @@ type RunOptions struct {
 	Env map[string]string
 }
 
+// StdioProcess is a long-running wsl.exe whose standard input and output form
+// a connection (stdin is written, stdout is read).
+type StdioProcess interface {
+	Process
+	io.ReadWriteCloser
+}
+
 // Runner runs wsl.exe. Tests replace it with a fake.
 type Runner interface {
 	Run(ctx context.Context, args ...string) (Result, error)
 	RunWith(ctx context.Context, opts RunOptions, args ...string) (Result, error)
 	Start(args ...string) (Process, error)
+	StartStdio(args ...string) (StdioProcess, error)
 }
 
 // ExecRunner runs the real wsl.exe.
@@ -121,6 +130,42 @@ func (r ExecRunner) Start(args ...string) (Process, error) {
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// StartStdio starts wsl.exe with its standard input and output connected to
+// the returned process. Its stderr (logs of the Linux side) is discarded.
+func (r ExecRunner) StartStdio(args ...string) (StdioProcess, error) {
+	cmd := r.command(nil, args)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	p := &stdioProcess{execProcess: execProcess{cmd: cmd, done: make(chan struct{})}, in: stdin, out: stdout}
+	go func() {
+		_ = cmd.Wait()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+type stdioProcess struct {
+	execProcess
+	in  io.WriteCloser
+	out io.ReadCloser
+}
+
+func (p *stdioProcess) Read(b []byte) (int, error)  { return p.out.Read(b) }
+func (p *stdioProcess) Write(b []byte) (int, error) { return p.in.Write(b) }
+func (p *stdioProcess) Close() error {
+	_ = p.in.Close()
+	return p.Stop()
 }
 
 type execProcess struct {

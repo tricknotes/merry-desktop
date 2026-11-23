@@ -12,11 +12,17 @@
 | --- | --- | --- |
 | github.com/wailsapp/wails/v3 | v3.1.0 | MIT |
 | github.com/go-ole/go-ole | v1.3.0 | MIT |
-| golang.org/x/sys | v0.48.0 | BSD-3-Clause |
+| github.com/Microsoft/go-winio | v0.6.4 | MIT(名前付きパイプ、F-04) |
+| golang.org/x/sys | v0.49.0 | BSD-3-Clause |
 | Go 標準ライブラリ | 1.27.4 | BSD-3-Clause |
 
 `go.mod` にはほかに macOS / Linux 版でだけ使う間接の依存(coder/websocket、purego、godbus、x/term)があるが、
 Windows 版には入らない。macOS 版を作るとき(フェーズ3)に確認する。
+
+### engine-agent(VM の中で動く Linux 用のプログラム、`cmd/engine-agent`)
+
+Go 標準ライブラリ(BSD-3-Clause)と、このリポジトリのコードだけでできている。アプリ本体に gzip で埋め込む。
+接続の多重化(`internal/mux`)は自作した(既製の yamux は MPL-2.0 のため使わなかった)。
 
 ### フロント(`frontend/`)
 

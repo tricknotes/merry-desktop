@@ -141,12 +141,8 @@ func (b *Backend) SetResources(ctx context.Context, r vm.Resources) error {
 func (b *Backend) RestartHost(ctx context.Context) error {
 	b.mu.Lock()
 	wasRunning := b.keepaliveRunning()
-	p := b.keepalive
-	b.keepalive = nil
 	b.mu.Unlock()
-	if p != nil {
-		_ = p.Stop()
-	}
+	_ = b.endSession()
 	res, err := b.Runner.Run(ctx, "--shutdown")
 	if err != nil {
 		return fmt.Errorf("wsl --shutdown: %w", err)

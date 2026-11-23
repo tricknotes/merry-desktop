@@ -6,11 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/tricknotes/merry-desktop/internal/mux"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
 
@@ -18,7 +20,7 @@ import (
 //
 // WSL stops a distro shortly after its last wsl.exe session ends, which also
 // stops Docker Engine. While the VM should run, Backend therefore keeps one
-// session open (the keepalive) and Stop ends it.
+// session open (the engine-agent, see agent.go) and Stop ends it.
 type Backend struct {
 	Distro string
 	Runner Runner
@@ -42,7 +44,9 @@ type Backend struct {
 	HTTPClient   *http.Client
 
 	mu        sync.Mutex
-	keepalive Process
+	keepalive StdioProcess // the engine-agent session (see agent.go)
+	session   *mux.Session
+	endpoint  *endpoint // where the host docker CLI connects (Windows: a named pipe)
 }
 
 var _ vm.Backend = (*Backend)(nil)
@@ -82,6 +86,36 @@ func (b *Backend) lookup(ctx context.Context) (distro, error) {
 	return d, nil
 }
 
+// endSession closes the host endpoint and the agent session.
+func (b *Backend) endSession() error {
+	b.stopEndpoint()
+	b.mu.Lock()
+	p, s := b.keepalive, b.session
+	b.keepalive, b.session = nil, nil
+	b.mu.Unlock()
+	if s != nil {
+		_ = s.Close()
+	}
+	if p != nil {
+		if err := p.Stop(); err != nil {
+			return fmt.Errorf("stop engine-agent: %w", err)
+		}
+	}
+	return nil
+}
+
+// DialEngine opens a connection to the engine API through the agent session.
+// meta names the kind of client, which decides the path translation.
+func (b *Backend) DialEngine(meta string) (net.Conn, error) {
+	b.mu.Lock()
+	s := b.session
+	b.mu.Unlock()
+	if s == nil {
+		return nil, vm.ErrNotRunning
+	}
+	return s.Open([]byte(meta))
+}
+
 // engineReady reports whether Docker Engine answers inside the distro.
 func (b *Backend) engineReady(ctx context.Context) bool {
 	res, err := b.Runner.Run(ctx, b.inDistro("docker", "version", "--format", "{{.Server.Version}}")...)
@@ -89,11 +123,13 @@ func (b *Backend) engineReady(ctx context.Context) bool {
 }
 
 func (b *Backend) keepaliveRunning() bool {
-	if b.keepalive == nil {
+	if b.keepalive == nil || b.session == nil {
 		return false
 	}
 	select {
 	case <-b.keepalive.Done():
+		return false
+	case <-b.session.Done():
 		return false
 	default:
 		return true
@@ -113,22 +149,28 @@ func (b *Backend) Start(ctx context.Context) error {
 	}
 
 	b.mu.Lock()
-	if !b.keepaliveRunning() {
-		// Starting a session boots the distro; its [boot] command starts dockerd.
-		p, err := b.Runner.Start(b.inDistro("sleep", "infinity")...)
+	running := b.keepaliveRunning()
+	b.mu.Unlock()
+	if !running {
+		// Running a command boots the distro; its [boot] command starts dockerd.
+		if err := b.ensureAgent(ctx); err != nil {
+			return err
+		}
+		p, err := b.Runner.StartStdio(b.agentCommand()...)
 		if err != nil {
-			b.mu.Unlock()
 			return fmt.Errorf("start %s: %w", b.Distro, err)
 		}
+		b.mu.Lock()
 		b.keepalive = p
+		b.session = mux.Client(p)
+		b.mu.Unlock()
 	}
-	b.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(ctx, b.ReadyTimeout)
 	defer cancel()
 	for {
 		if b.engineReady(ctx) {
-			return nil
+			return b.startEndpoint()
 		}
 		select {
 		case <-ctx.Done():
@@ -142,14 +184,8 @@ func (b *Backend) Start(ctx context.Context) error {
 }
 
 func (b *Backend) Stop(ctx context.Context) error {
-	b.mu.Lock()
-	p := b.keepalive
-	b.keepalive = nil
-	b.mu.Unlock()
-	if p != nil {
-		if err := p.Stop(); err != nil {
-			return fmt.Errorf("stop keepalive: %w", err)
-		}
+	if err := b.endSession(); err != nil {
+		return err
 	}
 	res, err := b.Runner.Run(ctx, "--terminate", b.Distro)
 	if err != nil {

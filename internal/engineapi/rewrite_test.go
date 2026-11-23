@@ -1,0 +1,95 @@
+package engineapi
+
+import (
+	"encoding/json"
+	"reflect"
+	"testing"
+)
+
+func TestWindowsPaths(t *testing.T) {
+	tr := WindowsPaths("/mnt/wsl/engine/fs")
+	cases := map[string]string{
+		`C:\Users\me\proj`:            "/mnt/c/Users/me/proj",
+		`d:/work/app`:                 "/mnt/d/work/app",
+		`C:`:                          "/mnt/c",
+		`\\wsl$\Ubuntu\home\me\src`:   "/mnt/wsl/engine/fs/Ubuntu/home/me/src",
+		`\\wsl.localhost\Debian\srv`:  "/mnt/wsl/engine/fs/Debian/srv",
+		`//wsl.localhost/Ubuntu/home`: "/mnt/wsl/engine/fs/Ubuntu/home",
+	}
+	for in, want := range cases {
+		if got, ok := tr(in); !ok || got != want {
+			t.Errorf("%q -> %q, %v; want %q", in, got, ok, want)
+		}
+	}
+	for _, unchanged := range []string{"/var/run/docker.sock", "data", `\\server\share\x`} {
+		if got, ok := tr(unchanged); ok {
+			t.Errorf("%q translated to %q, want unchanged", unchanged, got)
+		}
+	}
+}
+
+func TestSplitBind(t *testing.T) {
+	cases := map[string][2]string{
+		`C:\x:/y:ro`:   {`C:\x`, ":/y:ro"},
+		`c:/x:/y`:      {`c:/x`, ":/y"},
+		"/home/me:/y":  {"/home/me", ":/y"},
+		"data:/var/db": {"data", ":/var/db"},
+		"/only":        {"/only", ""},
+		"v:/x":         {"v", ":/x"},
+	}
+	for in, want := range cases {
+		src, rest := splitBind(in)
+		if src != want[0] || rest != want[1] {
+			t.Errorf("splitBind(%q) = %q, %q; want %q, %q", in, src, rest, want[0], want[1])
+		}
+	}
+}
+
+func TestRewriteContainerCreate(t *testing.T) {
+	body := `{"Image":"nginx","Labels":{"com.docker.compose.project":"p"},"HostConfig":{
+		"Binds":["C:\\proj\\src:/src:ro","data:/var/lib/data","/already/linux:/x"],
+		"Mounts":[{"Type":"bind","Source":"C:\\proj\\conf","Target":"/etc/conf","ReadOnly":true},
+		          {"Type":"volume","Source":"cache","Target":"/cache"}],
+		"Memory":536870912}}`
+	out, changed, err := RewriteContainerCreate([]byte(body), WindowsPaths(""))
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	var doc struct {
+		Image      string
+		Labels     map[string]string
+		HostConfig struct {
+			Binds  []string
+			Mounts []map[string]any
+			Memory int64
+		}
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	wantBinds := []string{"/mnt/c/proj/src:/src:ro", "data:/var/lib/data", "/already/linux:/x"}
+	if !reflect.DeepEqual(doc.HostConfig.Binds, wantBinds) {
+		t.Errorf("Binds = %v", doc.HostConfig.Binds)
+	}
+	if doc.HostConfig.Mounts[0]["Source"] != "/mnt/c/proj/conf" || doc.HostConfig.Mounts[0]["ReadOnly"] != true {
+		t.Errorf("bind mount = %v", doc.HostConfig.Mounts[0])
+	}
+	if doc.HostConfig.Mounts[1]["Source"] != "cache" {
+		t.Errorf("volume mount changed: %v", doc.HostConfig.Mounts[1])
+	}
+	if doc.Image != "nginx" || doc.Labels["com.docker.compose.project"] != "p" || doc.HostConfig.Memory != 536870912 {
+		t.Errorf("other fields changed: %+v", doc)
+	}
+}
+
+func TestRewriteLeavesUnrelatedBodiesAlone(t *testing.T) {
+	for _, body := range []string{`{"Image":"x"}`, `{"Image":"x","HostConfig":null}`, `{"HostConfig":{"Binds":["v:/x"]}}`} {
+		out, changed, err := RewriteContainerCreate([]byte(body), WindowsPaths(""))
+		if err != nil || changed || string(out) != body {
+			t.Errorf("%s -> %s, %v, %v", body, out, changed, err)
+		}
+	}
+	if _, _, err := RewriteContainerCreate([]byte("not json"), WindowsPaths("")); err == nil {
+		t.Error("want error for invalid JSON")
+	}
+}

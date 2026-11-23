@@ -1,1 +1,3 @@
 /bin/
+/internal/vm/wsl/assets/engine-agent
+/internal/vm/wsl/assets/engine-agent.gz

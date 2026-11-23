@@ -3,12 +3,14 @@ package wsl
 import (
 	"context"
 	"errors"
+	"net"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/tricknotes/merry-desktop/internal/mux"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
 
@@ -38,6 +40,11 @@ type fakeRunner struct {
 	shutdowns int
 	// handle answers calls before the defaults; ok=false falls through.
 	handle func(opts RunOptions, args []string) (Result, bool)
+	// agents are the agent ends of the sessions started with StartStdio.
+	agents []*mux.Session
+	// agentInstalls counts installs of the embedded engine-agent.
+	agentInstalls int
+	agentHash     string
 }
 
 func (f *fakeRunner) Run(ctx context.Context, args ...string) (Result, error) {
@@ -66,6 +73,15 @@ func (f *fakeRunner) RunWith(_ context.Context, opts RunOptions, args ...string)
 			return Result{Stdout: "29.10.0\n"}, nil
 		}
 		return Result{ExitCode: 1, Stderr: "Cannot connect"}, nil
+	case strings.HasSuffix(joined, "--exec sha256sum "+agentPath):
+		if f.agentHash == "" {
+			return Result{ExitCode: 1, Stderr: "No such file"}, nil
+		}
+		return Result{Stdout: f.agentHash + "  " + agentPath + "\n"}, nil
+	case strings.Contains(joined, "gunzip -c > "+agentPath+".new"):
+		f.agentInstalls++
+		f.agentHash = agentSHA256
+		return Result{}, nil
 	case strings.HasPrefix(joined, "--manage test-engine --resize "):
 		if f.state == "Running" {
 			return Result{ExitCode: 1, Stderr: "distro is running"}, nil
@@ -87,6 +103,27 @@ func (f *fakeRunner) RunWith(_ context.Context, opts RunOptions, args ...string)
 		return Result{ExitCode: 1}, nil
 	}
 	return Result{ExitCode: 127, Stderr: "unexpected: " + joined}, nil
+}
+
+// fakeStdio is the host end of a fake engine-agent session; agent is the other end.
+type fakeStdio struct {
+	*fakeProcess
+	net.Conn
+}
+
+func (s *fakeStdio) Close() error { _ = s.Conn.Close(); return s.fakeProcess.Stop() }
+func (s *fakeStdio) Stop() error  { _ = s.Conn.Close(); return s.fakeProcess.Stop() }
+
+func (f *fakeRunner) StartStdio(args ...string) (StdioProcess, error) {
+	p, err := f.Start(args...)
+	if err != nil {
+		return nil, err
+	}
+	host, agent := net.Pipe()
+	f.mu.Lock()
+	f.agents = append(f.agents, mux.Server(agent))
+	f.mu.Unlock()
+	return &fakeStdio{fakeProcess: p.(*fakeProcess), Conn: host}, nil
 }
 
 func (f *fakeRunner) Start(args ...string) (Process, error) {
@@ -133,8 +170,16 @@ func TestStartWaitsForEngineAndKeepsSessionOpen(t *testing.T) {
 	if len(f.started) != 1 {
 		t.Fatalf("keepalive sessions = %d, want 1", len(f.started))
 	}
-	if want := "start: --distribution test-engine --user root --exec sleep infinity"; f.calls[1] != want {
-		t.Errorf("call = %q, want %q", f.calls[1], want)
+	want := "start: " + strings.Join(b.agentCommand(), " ")
+	found := false
+	for _, c := range f.calls {
+		found = found || c == want
+	}
+	if !found {
+		t.Errorf("agent session not started; calls = %v", f.calls)
+	}
+	if f.agentInstalls != 1 {
+		t.Errorf("agent installs = %d, want 1", f.agentInstalls)
 	}
 	// A second Start must not open another session.
 	if err := b.Start(context.Background()); err != nil {
@@ -142,6 +187,42 @@ func TestStartWaitsForEngineAndKeepsSessionOpen(t *testing.T) {
 	}
 	if len(f.started) != 1 {
 		t.Errorf("keepalive sessions after second Start = %d, want 1", len(f.started))
+	}
+}
+
+func TestAgentIsNotReinstalledWhenCurrent(t *testing.T) {
+	f := &fakeRunner{state: "Stopped", agentHash: agentSHA256}
+	if err := newTestBackend(t, f).Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.agentInstalls != 0 {
+		t.Errorf("reinstalled an up-to-date agent")
+	}
+}
+
+func TestDialEngineOpensAStreamWithMeta(t *testing.T) {
+	f := &fakeRunner{state: "Stopped"}
+	b := newTestBackend(t, f)
+	if _, err := b.DialEngine("windows"); !errors.Is(err, vm.ErrNotRunning) {
+		t.Fatalf("DialEngine before Start = %v, want ErrNotRunning", err)
+	}
+	if err := b.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := b.DialEngine("windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	st, err := f.agents[0].Accept()
+	if err != nil || string(st.Meta()) != "windows" {
+		t.Fatalf("agent got %q, %v", st.Meta(), err)
+	}
+	if err := b.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.DialEngine("windows"); !errors.Is(err, vm.ErrNotRunning) {
+		t.Fatalf("DialEngine after Stop = %v, want ErrNotRunning", err)
 	}
 }
 
