@@ -15,6 +15,9 @@ import (
 type Settings struct {
 	// Registries are the registries offered for login (F-12), as host[:port].
 	Registries []string `json:"registries"`
+	// Integrations are the environments (WSL distros) whose docker CLI may use
+	// the engine. nil means the backend's default; an empty list means none.
+	Integrations *[]string `json:"integrations,omitempty"`
 }
 
 // Store reads and writes Settings at Path.

@@ -179,7 +179,10 @@ func (b *Backend) Start(ctx context.Context) error {
 		if err := b.ensureAgent(ctx); err != nil {
 			return err
 		}
-		targets := b.integrationTargets(b.listOrNil(ctx))
+		list := b.listOrNil(ctx)
+		b.mu.Lock()
+		targets := b.integrationTargets(list)
+		b.mu.Unlock()
 		p, err := b.Runner.StartStdio(b.agentCommand(targets)...)
 		if err != nil {
 			return fmt.Errorf("start %s: %w", b.Distro, err)

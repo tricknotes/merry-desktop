@@ -10,16 +10,13 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/tricknotes/merry-desktop/frontend"
 	"github.com/tricknotes/merry-desktop/internal/appservice"
 	"github.com/tricknotes/merry-desktop/internal/core"
 	"github.com/tricknotes/merry-desktop/internal/devui"
-	"github.com/tricknotes/merry-desktop/internal/settings"
 )
 
 // ui serves the app's settings and setup windows to a browser, backed by the
@@ -39,11 +36,10 @@ func ui(ctx context.Context, c *core.Controller, args []string) error {
 		return errors.New("-addr must be a loopback address")
 	}
 
-	configDir, err := os.UserConfigDir()
+	store, err := devSettings(ctx, c)
 	if err != nil {
 		return err
 	}
-	store := &settings.Store{Path: filepath.Join(configDir, "merry-dev", "settings.json")}
 	service := appservice.New(c, store, nil)
 	dist, err := fs.Sub(frontend.Dist, "dist")
 	if err != nil {

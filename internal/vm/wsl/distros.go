@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+
+	"github.com/tricknotes/merry-desktop/internal/vm"
 )
 
 // Integration with the user's other WSL distros (F-04): a docker CLI inside
@@ -113,5 +116,58 @@ func (b *Backend) integrate(ctx context.Context, distro string) error {
 	}
 	b.contextDone[distro] = true
 	b.mu.Unlock()
+	return nil
+}
+
+var _ vm.Integrator = (*Backend)(nil)
+
+// Integrations lists the user's WSL2 distros that can be integrated.
+func (b *Backend) Integrations(ctx context.Context) ([]vm.Integration, error) {
+	res, err := b.Runner.Run(ctx, "--list", "--verbose")
+	if err != nil {
+		return nil, err
+	}
+	list := parseList(res.Stdout)
+	b.mu.Lock()
+	enabled := b.integrationTargets(list)
+	b.mu.Unlock()
+	var out []vm.Integration
+	for _, d := range list {
+		if d.Version != "2" || strings.EqualFold(d.Name, b.Distro) || isOtherEngine(d.Name) {
+			continue
+		}
+		out = append(out, vm.Integration{Name: d.Name, Default: d.Default, Enabled: slices.Contains(enabled, d.Name)})
+	}
+	return out, nil
+}
+
+// SetIntegrations changes the integrated distros. While the VM runs, only the
+// agent session is reconnected: the distro (and its containers) keeps running.
+// Distros that are no longer integrated get their root bind mount removed; the
+// docker context in them is left as is.
+func (b *Backend) SetIntegrations(ctx context.Context, names []string) error {
+	b.mu.Lock()
+	b.Distros = names
+	running := b.keepaliveRunning()
+	before := append([]string(nil), b.integrated...)
+	b.mu.Unlock()
+	if !running {
+		return nil
+	}
+	if err := b.endSession(); err != nil {
+		return err
+	}
+	if err := b.Start(ctx); err != nil {
+		return err
+	}
+	b.mu.Lock()
+	after := b.integrated
+	b.mu.Unlock()
+	for _, d := range before {
+		if !slices.Contains(after, d) {
+			_ = b.mustRun(ctx, RunOptions{}, "--distribution", d, "--user", "root", "--exec",
+				"sh", "-c", `mountpoint -q "$1" && umount "$1"; true`, "sh", b.distroRoot()+"/"+d)
+		}
+	}
 	return nil
 }
