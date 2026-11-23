@@ -1,0 +1,22 @@
+# Development tools. Nothing here is part of the app.
+#   docker compose run --rm builder make build
+#   docker compose run --rm builder make test
+services:
+  builder:
+    build:
+      context: build/dev
+    image: merry-desktop-builder:dev
+    # Run as the host user so that build outputs are not owned by root.
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    volumes:
+      # DEV_SRC: where the engine sees this checkout (defaults to here). See docs/development.md.
+      - ${DEV_SRC:-.}:/src
+      - go-mod:/cache/go-mod
+      - go-build:/cache/go-build
+      - npm:/cache/npm
+    working_dir: /src
+
+volumes:
+  go-mod:
+  go-build:
+  npm:
