@@ -158,3 +158,34 @@ func TestHTTPOverMux(t *testing.T) {
 		}
 	}
 }
+
+func TestBothSidesOpenStreams(t *testing.T) {
+	client, server := pair(t)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = client.Open([]byte("from-client")) }()
+		go func() { defer wg.Done(); _, _ = server.Open([]byte("from-server")) }()
+	}
+	got := map[string]int{}
+	var mu sync.Mutex
+	for _, s := range []*Session{client, server} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 4 {
+				st, err := s.Accept()
+				if err != nil {
+					return
+				}
+				mu.Lock()
+				got[string(st.Meta())]++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if got["from-client"] != 4 || got["from-server"] != 4 {
+		t.Fatalf("accepted %v, want 4 from each side", got)
+	}
+}

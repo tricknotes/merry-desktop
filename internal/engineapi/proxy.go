@@ -24,6 +24,10 @@ type Options struct {
 	Translate Translator
 	// Env is added to new containers unless they set the same key (F-11).
 	Env []string
+	// BeforeCreate runs before a container create request is forwarded, for
+	// example to make sure the paths it binds are mounted. Errors are logged
+	// and the request goes on (the engine then reports what is missing).
+	BeforeCreate func(ctx context.Context) error
 }
 
 // NewProxy returns a handler that forwards every request to the engine at
@@ -53,7 +57,15 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 			r.Out.URL.Scheme = "http"
 			r.Out.URL.Host = "docker"
 			r.Out.Host = "docker"
-			if (translate == nil && len(opts.Env) == 0) || r.In.Method != http.MethodPost || !containerCreate.MatchString(r.In.URL.Path) {
+			if r.In.Method != http.MethodPost || !containerCreate.MatchString(r.In.URL.Path) {
+				return
+			}
+			if opts.BeforeCreate != nil {
+				if err := opts.BeforeCreate(r.In.Context()); err != nil {
+					log.Warn("before container create", "err", err)
+				}
+			}
+			if translate == nil && len(opts.Env) == 0 {
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Out.Body, maxCreateBody))

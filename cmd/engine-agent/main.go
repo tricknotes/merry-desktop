@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -21,7 +22,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/engineapi"
 	"github.com/tricknotes/merry-desktop/internal/mux"
@@ -96,9 +99,14 @@ func serveStdio(args []string) error {
 	log.Info("engine-agent serving", "version", version, "socket", *socket, "distros", distros.String())
 	env := containerProxyEnv(*proxyEnv, log)
 
+	// Only the protocol may go to stdout; everything else goes to stderr.
+	session := mux.Server(stdio{Reader: os.Stdin, Writer: os.Stdout})
 	var servers []*http.Server
 	for _, d := range distros {
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, log)
+		ensure := func(ctx context.Context) error {
+			return ensureMounted(ctx, session, filepath.Join(*distroRoot, d), d)
+		}
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -110,8 +118,74 @@ func serveStdio(args []string) error {
 			_ = s.Close()
 		}
 	}()
-	// Only the protocol may go to stdout; everything else goes to stderr.
-	return serve(stdio{Reader: os.Stdin, Writer: os.Stdout}, *socket, *distroRoot, env, log)
+	return serve(session, *socket, *distroRoot, env, log)
+}
+
+// ensureMounted makes sure the distro's root is bind-mounted at path. The bind
+// lives in the distro's own mount namespace, so it disappears when the distro
+// restarts; then the host (which can run commands in that distro) is asked to
+// mount it again before the request goes on.
+func ensureMounted(ctx context.Context, session *mux.Session, path, distro string) error {
+	mounted, err := isMountpoint("/proc/self/mountinfo", path)
+	if err != nil || mounted {
+		return err
+	}
+	st, err := session.Open([]byte(controlMount + distro))
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	deadline := time.Now().Add(30 * time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = st.SetReadDeadline(deadline)
+	line, err := bufio.NewReader(st).ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("ask the host to mount %s: %w", distro, err)
+	}
+	if line = strings.TrimSpace(line); line != "ok" {
+		return fmt.Errorf("mount %s: %s", distro, line)
+	}
+	return nil
+}
+
+// controlMount is the stream metadata the agent uses to ask the host to
+// bind-mount a distro's root (the host answers "ok" or "error: ...").
+const controlMount = "mount:"
+
+// isMountpoint reports whether path is a mount point, per a mountinfo file.
+func isMountpoint(mountinfo, path string) (bool, error) {
+	data, err := os.ReadFile(mountinfo)
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 4 && unescapeMountPath(fields[4]) == path {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// unescapeMountPath undoes the octal escapes of mountinfo (\040 for a space).
+func unescapeMountPath(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(n))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // proxyKeys are the variables passed to containers, like the docker CLI's
@@ -156,7 +230,7 @@ func containerProxyEnv(path string, log *slog.Logger) []string {
 // The socket is world-accessible on purpose: /mnt/wsl is reachable only from
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
-func serveDistro(runDir, distro, socket, distroRoot string, env []string, log *slog.Logger) (*http.Server, error) {
+func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error, log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -175,7 +249,9 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, log *s
 		return nil, err
 	}
 	srv := &http.Server{
-		Handler:  engineapi.NewProxyWith(socket, engineapi.Options{Translate: engineapi.DistroPaths(distroRoot, distro), Env: env}, log),
+		Handler: engineapi.NewProxyWith(socket, engineapi.Options{
+			Translate: engineapi.DistroPaths(distroRoot, distro), Env: env, BeforeCreate: ensureMount,
+		}, log),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() { _ = srv.Serve(l) }()
@@ -184,8 +260,7 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, log *s
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(conn io.ReadWriteCloser, socket, distroRoot string, env []string, log *slog.Logger) error {
-	session := mux.Server(conn)
+func serve(session *mux.Session, socket, distroRoot string, env []string, log *slog.Logger) error {
 	windows := engineapi.NewProxyWith(socket, engineapi.Options{Translate: engineapi.WindowsPaths(distroRoot), Env: env}, log)
 	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: env}, log)
 
