@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"log/slog"
 	"os"
@@ -40,6 +41,10 @@ func engineName() string {
 	return appinfo.EngineName
 }
 
+// autostartArg marks a launch at user login (F-05). Such a launch also starts
+// the VM, so that `docker` works right after login without opening the tray.
+const autostartArg = "--autostart"
+
 // VMService is bound to the settings window.
 type VMService struct {
 	controller *core.Controller
@@ -58,6 +63,9 @@ func (s *VMService) SetResources(resources vm.Resources) error {
 }
 
 func main() {
+	launchedAtLogin := flag.Bool(autostartArg[2:], false, "launched at user login; also start the VM")
+	flag.Parse()
+
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	controller := core.NewController(newBackend(), logger)
 
@@ -113,6 +121,15 @@ func main() {
 	restartItem := menu.Add("再起動").OnClick(func(*application.Context) { run(controller.Restart) })
 	menu.AddSeparator()
 	menu.Add("設定を開く").OnClick(func(*application.Context) { openSettings() })
+	autostartItem := menu.AddCheckbox("ログイン時に起動", false)
+	autostartItem.OnClick(func(ctx *application.Context) {
+		item := ctx.ClickedMenuItem()
+		if err := setAutostart(app, item.Checked()); err != nil {
+			logger.Error("autostart", "err", err)
+			item.SetChecked(!item.Checked())
+			menu.Update()
+		}
+	})
 	menu.AddSeparator()
 	menu.Add("終了").OnClick(func(*application.Context) { app.Quit() })
 	tray.SetMenu(menu)
@@ -137,8 +154,18 @@ func main() {
 		app.Event.Emit("vm:changed", s)
 	})
 
+	if enabled, err := app.Autostart.IsEnabled(); err == nil {
+		autostartItem.SetChecked(enabled)
+		menu.Update()
+	} else {
+		logger.Warn("autostart status", "err", err)
+	}
+
 	go func() {
 		controller.Refresh(context.Background())
+		if *launchedAtLogin && controller.Snapshot().Status == vm.StatusStopped {
+			controller.Start(context.Background())
+		}
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -149,4 +176,15 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// setAutostart registers or removes the login item (HKCU\...\Run on Windows).
+func setAutostart(app *application.App, enabled bool) error {
+	if !enabled {
+		return app.Autostart.Disable()
+	}
+	return app.Autostart.EnableWithOptions(application.AutostartOptions{
+		Identifier: appinfo.ID,
+		Arguments:  []string{autostartArg},
+	})
 }
