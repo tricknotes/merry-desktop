@@ -12,6 +12,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -103,12 +104,13 @@ func serveStdio(args []string) error {
 	// Only the protocol may go to stdout; everything else goes to stderr.
 	session := mux.Server(stdio{Reader: os.Stdin, Writer: os.Stdout})
 	notify := noticeSender(session)
+	checkPorts := portChecker(session)
 	var servers []*http.Server
 	for _, d := range distros {
 		ensure := func(ctx context.Context) error {
 			return ensureMounted(ctx, session, filepath.Join(*distroRoot, d), d)
 		}
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, notify, log)
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, checkPorts, notify, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -120,7 +122,33 @@ func serveStdio(args []string) error {
 			_ = s.Close()
 		}
 	}()
-	return serve(session, *socket, *distroRoot, env, notify, log)
+	return serve(session, *socket, *distroRoot, env, checkPorts, notify, log)
+}
+
+// controlPorts asks the host which published ports are already taken there;
+// the reply is a JSON list of warnings.
+const controlPorts = "ports:"
+
+// portChecker returns a function that asks the host about ports (F-22). Any
+// failure gives no warnings: the check must never block a container create.
+func portChecker(session *mux.Session) func(context.Context, []engineapi.PortRequest) []string {
+	return func(ctx context.Context, ports []engineapi.PortRequest) []string {
+		req, err := json.Marshal(ports)
+		if err != nil {
+			return nil
+		}
+		st, err := session.Open(append([]byte(controlPorts), req...))
+		if err != nil {
+			return nil
+		}
+		defer st.Close()
+		_ = st.SetReadDeadline(time.Now().Add(10 * time.Second))
+		var warnings []string
+		if err := json.NewDecoder(st).Decode(&warnings); err != nil {
+			return nil
+		}
+		return warnings
+	}
 }
 
 // controlNotice is the stream metadata prefix of a notice for the user (a
@@ -256,7 +284,8 @@ func containerProxyEnv(path string, log *slog.Logger) []string {
 // The socket is world-accessible on purpose: /mnt/wsl is reachable only from
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
-func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error, notify func(string), log *slog.Logger) (*http.Server, error) {
+func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error,
+	checkPorts func(context.Context, []engineapi.PortRequest) []string, notify func(string), log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -277,7 +306,7 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 	srv := &http.Server{
 		Handler: engineapi.NewProxyWith(socket, engineapi.Options{
 			Translate: engineapi.DistroPaths(distroRoot, distro), Env: env, BeforeCreate: ensureMount,
-			WarnSlowBinds: true, Notify: notify,
+			WarnSlowBinds: true, CheckPorts: checkPorts, Notify: notify,
 		}, log),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
@@ -287,9 +316,10 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(session *mux.Session, socket, distroRoot string, env []string, notify func(string), log *slog.Logger) error {
+func serve(session *mux.Session, socket, distroRoot string, env []string,
+	checkPorts func(context.Context, []engineapi.PortRequest) []string, notify func(string), log *slog.Logger) error {
 	windows := engineapi.NewProxyWith(socket, engineapi.Options{
-		Translate: engineapi.WindowsPaths(distroRoot), Env: env, WarnSlowBinds: true, Notify: notify,
+		Translate: engineapi.WindowsPaths(distroRoot), Env: env, WarnSlowBinds: true, CheckPorts: checkPorts, Notify: notify,
 	}, log)
 	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: env}, log)
 

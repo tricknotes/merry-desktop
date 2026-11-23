@@ -2,12 +2,14 @@ package wsl
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/tricknotes/merry-desktop/internal/engineapi"
 	"github.com/tricknotes/merry-desktop/internal/mux"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
@@ -179,6 +181,7 @@ func (b *Backend) SetIntegrations(ctx context.Context, names []string) error {
 const (
 	controlMount  = "mount:"
 	controlNotice = "notice:"
+	controlPorts  = "ports:" // JSON []engineapi.PortRequest; reply: JSON []string warnings
 )
 
 var _ vm.Noticer = (*Backend)(nil)
@@ -210,6 +213,19 @@ func (b *Backend) serveControl(session *mux.Session) {
 				if notice != nil {
 					notice(msg)
 				}
+				return
+			}
+			if raw, ok := strings.CutPrefix(meta, controlPorts); ok {
+				var ports []engineapi.PortRequest
+				warnings := []string{}
+				if json.Unmarshal([]byte(raw), &ports) == nil {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					warnings = append(warnings, b.portWarnings(ctx, ports)...)
+					cancel()
+				}
+				out, _ := json.Marshal(warnings)
+				_, _ = st.Write(out)
+				_ = st.CloseWrite()
 				return
 			}
 			reply := "error: unknown request"

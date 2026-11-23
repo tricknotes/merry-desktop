@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tricknotes/merry-desktop/internal/engineapi"
 	"github.com/tricknotes/merry-desktop/internal/mux"
 )
 
@@ -36,7 +37,7 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 
 	hostEnd, agentEnd := net.Pipe()
 	go func() {
-		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", nil, nil, slog.New(slog.DiscardHandler))
+		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", nil, nil, nil, slog.New(slog.DiscardHandler))
 	}()
 	session := mux.Client(hostEnd)
 	defer session.Close()
@@ -79,7 +80,7 @@ func TestServeDistroSocket(t *testing.T) {
 	runDir := filepath.Join(dir, "run")
 	ensured := 0
 	ensure := func(context.Context) error { ensured++; return nil }
-	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, ensure, nil, slog.New(slog.DiscardHandler))
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, ensure, nil, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestServeDistroSocket(t *testing.T) {
 	if ensured != 1 {
 		t.Errorf("mount check ran %d times, want 1", ensured)
 	}
-	if _, err := serveDistro(runDir, "../etc", sock, "", nil, nil, nil, slog.New(slog.DiscardHandler)); err == nil {
+	if _, err := serveDistro(runDir, "../etc", sock, "", nil, nil, nil, nil, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("accepted a distro name with a path separator")
 	}
 }
@@ -193,5 +194,25 @@ func TestNoticeSenderSendsEachNoticeOnce(t *testing.T) {
 	case extra := <-got:
 		t.Fatalf("duplicate notice %q", extra)
 	default:
+	}
+}
+
+func TestPortCheckerAsksTheHost(t *testing.T) {
+	hostEnd, agentEnd := net.Pipe()
+	host, agent := mux.Client(hostEnd), mux.Server(agentEnd)
+	defer host.Close()
+	go func() {
+		st, err := host.Accept()
+		if err != nil {
+			return
+		}
+		if strings.HasPrefix(string(st.Meta()), controlPorts) {
+			_, _ = st.Write([]byte(`["ポート 8080/tcp は使われています"]`))
+		}
+		_ = st.CloseWrite()
+	}()
+	got := portChecker(agent)(context.Background(), []engineapi.PortRequest{{Port: 8080, Proto: "tcp"}})
+	if len(got) != 1 || !strings.Contains(got[0], "8080") {
+		t.Fatalf("warnings = %v", got)
 	}
 }
