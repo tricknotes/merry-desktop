@@ -29,6 +29,15 @@ func (c *Controller) SetIntegrations(ctx context.Context, names []string) error 
 	return nil
 }
 
+// SetContainerCA turns the CA bundle for new containers on or off (F-11).
+func (c *Controller) SetContainerCA(ctx context.Context, enabled bool) error {
+	cc, ok := c.backend.(vm.ContainerCAConfigurer)
+	if !ok {
+		return vm.ErrNotSupported
+	}
+	return cc.SetContainerCA(ctx, enabled)
+}
+
 // ApplySavedIntegrations applies the choice stored in the settings, if any.
 func (c *Controller) ApplySavedIntegrations(ctx context.Context, saved *[]string) error {
 	if saved == nil {

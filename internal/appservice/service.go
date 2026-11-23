@@ -121,6 +121,22 @@ func (s *Service) ScanImage(image string) (core.ScanResult, error) {
 	return r, notRunningError(err)
 }
 
+// ContainerCAEnabled reports whether new containers get the CA bundle with
+// the host's certificates (F-11).
+func (s *Service) ContainerCAEnabled() (bool, error) {
+	cur, err := s.Settings.Load()
+	return cur.ContainerCA, err
+}
+
+// SetContainerCA turns it on or off; it applies to containers created after.
+func (s *Service) SetContainerCA(enable bool) error {
+	if err := s.Controller.SetContainerCA(context.Background(), enable); err != nil {
+		return err
+	}
+	_, err := s.Settings.Update(func(v *settings.Settings) { v.ContainerCA = enable })
+	return err
+}
+
 // AutoCleanupEnabled reports whether old build cache and untagged images are
 // removed daily (I-22).
 func (s *Service) AutoCleanupEnabled() (bool, error) {

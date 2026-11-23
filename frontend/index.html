@@ -93,6 +93,14 @@
       <p class="hint">docker の設定ファイル(~/.docker/config.json)の proxies に、検出したプロキシを書き込みます(元のファイルはバックアップします)。自分で設定した proxies は変更しません。パスワードつきのプロキシは書き込みません。</p>
       <ul id="build-proxy-result" class="registries"></ul>
 
+      <h2>コンテナの証明書</h2>
+      <label class="check">
+        <input id="container-ca" type="checkbox" />
+        新しいコンテナに、Windows が信頼している証明書を渡す
+      </label>
+      <p class="hint">社内のプロキシが TLS を検査していると、コンテナの中の npm、pip、curl、git が証明書エラーになります。オンにすると、VM の証明書の束を /etc/ssl/merry-desktop/ca-certificates.crt に読み取り専用でマウントし、SSL_CERT_FILE などの環境変数でそれを指します。コンテナが自分で設定した値は変えません。作り直したコンテナから反映されます。</p>
+      <p id="container-ca-message" role="status"></p>
+
       <h2>社内レジストリ</h2>
       <p class="hint">ログイン情報は Windows の資格情報マネージャーに保存されます。</p>
       <ul id="registries" class="registries"></ul>

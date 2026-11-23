@@ -24,6 +24,9 @@ type Options struct {
 	Translate Translator
 	// Env is added to new containers unless they set the same key (F-11).
 	Env []string
+	// CABundle, if set, is a CA bundle in the VM that new containers get at
+	// ContainerCAPath, with the environment that points tools at it (F-11).
+	CABundle string
 	// BeforeCreate runs before a container create request is forwarded, for
 	// example to make sure the paths it binds are mounted. Errors are logged
 	// and the request goes on (the engine then reports what is missing).
@@ -74,7 +77,7 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 					log.Warn("before container create", "err", err)
 				}
 			}
-			if translate == nil && len(opts.Env) == 0 && !opts.WarnSlowBinds && opts.CheckPorts == nil {
+			if translate == nil && len(opts.Env) == 0 && !opts.WarnSlowBinds && opts.CheckPorts == nil && opts.CABundle == "" {
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Out.Body, maxCreateBody))
@@ -102,7 +105,7 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 					}
 				}
 			}
-			rewritten, err := rewriteCreate(body, translate, opts.Env)
+			rewritten, err := rewriteCreate(body, translate, opts.Env, opts.CABundle)
 			if err != nil {
 				// Let the engine report the malformed request itself.
 				log.Warn("rewrite container create", "err", err)
@@ -122,9 +125,17 @@ func NewProxyWith(socketPath string, opts Options, log *slog.Logger) http.Handle
 	}
 }
 
-func rewriteCreate(body []byte, translate Translator, env []string) ([]byte, error) {
+func rewriteCreate(body []byte, translate Translator, env []string, caBundle string) ([]byte, error) {
 	if translate != nil {
 		out, _, err := RewriteContainerCreate(body, translate)
+		if err != nil {
+			return nil, err
+		}
+		body = out
+	}
+	// After the path translation: the bundle is a path in the VM already.
+	if caBundle != "" {
+		out, err := InjectCA(body, caBundle)
 		if err != nil {
 			return nil, err
 		}

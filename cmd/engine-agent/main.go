@@ -82,6 +82,7 @@ func serveStdio(args []string) error {
 	distroRoot := fs.String("distro-root", "", "where other WSL distros' roots are bind-mounted")
 	runDir := fs.String("run-dir", "", "directory for the per-distro sockets (under /mnt/wsl)")
 	proxyEnv := fs.String("proxy-env", "", "file with the proxy settings (export KEY=VALUE) to pass to new containers")
+	caBundle := fs.String("ca-bundle", "", "CA bundle to mount into new containers (F-11)")
 	logFile := fs.String("log-file", "", "append logs to this file instead of stderr (the host discards stderr)")
 	var distros names
 	fs.Var(&distros, "distro", "serve a socket for this WSL distro (repeatable)")
@@ -103,14 +104,17 @@ func serveStdio(args []string) error {
 
 	// Only the protocol may go to stdout; everything else goes to stderr.
 	session := mux.Server(stdio{Reader: os.Stdin, Writer: os.Stdout})
-	notify := noticeSender(session)
-	checkPorts := portChecker(session)
+	// What every proxy does to a new container; each adds its path translation.
+	base := engineapi.Options{
+		Env: env, CABundle: *caBundle, WarnSlowBinds: true,
+		CheckPorts: portChecker(session), Notify: noticeSender(session),
+	}
 	var servers []*http.Server
 	for _, d := range distros {
 		ensure := func(ctx context.Context) error {
 			return ensureMounted(ctx, session, filepath.Join(*distroRoot, d), d)
 		}
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, checkPorts, notify, log)
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, base, ensure, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -122,7 +126,7 @@ func serveStdio(args []string) error {
 			_ = s.Close()
 		}
 	}()
-	return serve(session, *socket, *distroRoot, env, checkPorts, notify, log)
+	return serve(session, *socket, *distroRoot, base, log)
 }
 
 // controlPorts asks the host which published ports are already taken there;
@@ -284,8 +288,8 @@ func containerProxyEnv(path string, log *slog.Logger) []string {
 // The socket is world-accessible on purpose: /mnt/wsl is reachable only from
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
-func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error,
-	checkPorts func(context.Context, []engineapi.PortRequest) []string, notify func(string), log *slog.Logger) (*http.Server, error) {
+func serveDistro(runDir, distro, socket, distroRoot string, base engineapi.Options,
+	ensureMount func(context.Context) error, log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -303,11 +307,11 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 		_ = l.Close()
 		return nil, err
 	}
+	opts := base
+	opts.Translate = engineapi.DistroPaths(distroRoot, distro)
+	opts.BeforeCreate = ensureMount
 	srv := &http.Server{
-		Handler: engineapi.NewProxyWith(socket, engineapi.Options{
-			Translate: engineapi.DistroPaths(distroRoot, distro), Env: env, BeforeCreate: ensureMount,
-			WarnSlowBinds: true, CheckPorts: checkPorts, Notify: notify,
-		}, log),
+		Handler:  engineapi.NewProxyWith(socket, opts, log),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() { _ = srv.Serve(l) }()
@@ -316,12 +320,11 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(session *mux.Session, socket, distroRoot string, env []string,
-	checkPorts func(context.Context, []engineapi.PortRequest) []string, notify func(string), log *slog.Logger) error {
-	windows := engineapi.NewProxyWith(socket, engineapi.Options{
-		Translate: engineapi.WindowsPaths(distroRoot), Env: env, WarnSlowBinds: true, CheckPorts: checkPorts, Notify: notify,
-	}, log)
-	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: env}, log)
+func serve(session *mux.Session, socket, distroRoot string, base engineapi.Options, log *slog.Logger) error {
+	opts := base
+	opts.Translate = engineapi.WindowsPaths(distroRoot)
+	windows := engineapi.NewProxyWith(socket, opts, log)
+	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: base.Env, CABundle: base.CABundle}, log)
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -331,5 +331,10 @@ func devSettings(ctx context.Context, c *core.Controller) (*settings.Store, erro
 	if err != nil {
 		return nil, err
 	}
+	if saved.ContainerCA {
+		if err := c.SetContainerCA(ctx, true); err != nil {
+			return nil, err
+		}
+	}
 	return store, c.ApplySavedIntegrations(ctx, saved.Integrations)
 }

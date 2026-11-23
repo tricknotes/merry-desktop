@@ -68,3 +68,26 @@ func (b *Backend) remember(sum string) {
 	b.appliedNetwork = sum
 	b.mu.Unlock()
 }
+
+// vmCABundle is the distro's CA bundle; apply-network.sh adds the host's
+// certificates to it.
+const vmCABundle = "/etc/ssl/certs/ca-certificates.crt"
+
+var _ vm.ContainerCAConfigurer = (*Backend)(nil)
+
+// SetContainerCA turns the CA bundle for new containers on or off. While the
+// VM runs, only the agent session is reconnected; containers keep running.
+func (b *Backend) SetContainerCA(ctx context.Context, enabled bool) error {
+	b.mu.Lock()
+	same := b.ContainerCA == enabled
+	b.ContainerCA = enabled
+	running := b.keepaliveRunning()
+	b.mu.Unlock()
+	if same || !running {
+		return nil
+	}
+	if err := b.endSession(); err != nil {
+		return err
+	}
+	return b.Start(ctx)
+}

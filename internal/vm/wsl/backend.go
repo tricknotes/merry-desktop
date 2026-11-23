@@ -48,6 +48,10 @@ type Backend struct {
 	HostCLI hostCLI
 	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
 	HostPath func(string) string
+	// ContainerCA gives new containers the VM's CA bundle (F-11). Set it with
+	// SetContainerCA while the VM runs.
+	ContainerCA bool
+
 	// appliedNetwork is the fingerprint of the network settings last applied
 	// to or found in the VM (C-2). Guarded by mu.
 	appliedNetwork string

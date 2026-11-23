@@ -242,8 +242,15 @@ func backgroundLoop(service *appservice.Service, logger *slog.Logger, openSetup 
 	controller, store := service.Controller, service.Settings
 	if saved, err := store.Load(); err != nil {
 		logger.Warn("load settings", "err", err)
-	} else if err := controller.ApplySavedIntegrations(ctx, saved.Integrations); err != nil {
-		logger.Warn("apply integrations", "err", err)
+	} else {
+		if err := controller.ApplySavedIntegrations(ctx, saved.Integrations); err != nil {
+			logger.Warn("apply integrations", "err", err)
+		}
+		if saved.ContainerCA {
+			if err := controller.SetContainerCA(ctx, true); err != nil {
+				logger.Warn("container CA", "err", err)
+			}
+		}
 	}
 	if err := controller.LoadResources(ctx); err != nil {
 		logger.Warn("load resources", "err", err)

@@ -143,6 +143,13 @@ type Provisioner interface {
 	Destroy(ctx context.Context) error
 }
 
+// ContainerCAConfigurer is implemented by backends that can give new
+// containers the VM's CA bundle, which includes the host's extra certificates
+// (F-11). Containers that already exist are not changed.
+type ContainerCAConfigurer interface {
+	SetContainerCA(ctx context.Context, enabled bool) error
+}
+
 // NetworkApplier is implemented by backends that can apply changed proxy and
 // CA settings to a VM that already exists (C-2). The engine and the sessions
 // to it use the new settings after the next VM start.
