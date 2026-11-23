@@ -27,12 +27,30 @@ docker compose run --rm builder make build  # ビルドだけ
 | パス | 中身 |
 | --- | --- |
 | `cmd/merry-desktop/` | トレイ常駐アプリ(Wails v3)。OS ごとのバックエンドの選択だけを持つ |
-| `internal/core/` | OS に依存しないコア。状態の管理と、VM 操作の直列化 |
-| `internal/vm/` | `Backend` インターフェース(起動 / 停止 / コマンド実行 / 状態取得 / リソース設定) |
-| `internal/vm/wsl/` | WSL2 の実装(`wsl.exe` を呼ぶ) |
+| `cmd/engine-agent/` | VM の中で動く Linux 用の中継。アプリに埋め込み、起動時に VM へ入れる |
+| `internal/core/` | OS に依存しないコア。状態、操作の直列化、セットアップ、リソース、ログイン、診断 |
+| `internal/vm/` | `Backend` インターフェースと、任意の追加機能(セットアップ、リソース、診断など) |
+| `internal/vm/wsl/` | WSL2 の実装(`wsl.exe`、名前付きパイプ、`.wslconfig`、Windows の CLI と PATH) |
 | `internal/vm/stub/` | メモリ上のスタブ(開発とテスト用) |
+| `internal/mux/` | 1本の接続の上に複数の接続を流す仕組み(ホスト ⇔ engine-agent) |
+| `internal/engineapi/` | Engine API の中継、バインドマウントのパス変換、コンテナへのプロキシの受け渡し |
+| `internal/diag/` | 診断レポートの zip と、秘密情報の除去 |
+| `internal/settings/`、`internal/applog/` | アプリの設定(JSON)とログファイル |
 | `internal/appinfo/` | アプリ名などの名前。アプリ名が決まったら、ここだけを変える |
-| `frontend/` | 設定ウィンドウ(Vite + TypeScript) |
+| `frontend/` | 設定ウィンドウとセットアップウィンドウ(Vite + TypeScript) |
+
+## 機能と実装の対応
+
+| 機能 | 主な実装 |
+| --- | --- |
+| F-01, F-02 | `internal/core/controller.go`、`cmd/merry-desktop/main.go`(トレイ) |
+| F-03 | `internal/vm/wsl/resources.go`、`wslconfig.go` |
+| F-04 | `cmd/engine-agent`、`internal/engineapi`、`internal/vm/wsl/endpoint*.go`、`distros.go`、`hostcli*.go` |
+| F-05 | `cmd/merry-desktop/main.go`(Wails の Autostart) |
+| F-10 | `internal/core/setup.go`、`internal/vm/wsl/provision.go` |
+| F-11 | `internal/vm/wsl/hostnet*.go`、`assets/apply-network.sh`、`engineapi.InjectEnv` |
+| F-12 | `internal/core/registry.go`、`internal/vm/wsl/hostcli.go`(`Login`) |
+| F-14 | `internal/core/diagnostics.go`、`internal/diag`、`internal/vm/wsl/diagnostics.go` |
 
 ## 実機で試すとき
 
