@@ -67,13 +67,7 @@ func main() {
 		log.Fatal(err)
 	}
 	logDir := filepath.Join(cacheDir, appinfo.ID, "logs")
-	logger, logFile, err := applog.Open(logDir)
-	if err != nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
-		logger.Warn("log file", "err", err)
-	} else {
-		defer logFile.Close()
-	}
+	logger, logWriter := applog.New()
 	controller := core.NewController(newBackend(), logger)
 	store := &settings.Store{Path: filepath.Join(configDir, appinfo.ID, "settings.json")}
 	var app *application.App
@@ -84,16 +78,38 @@ func main() {
 	})
 
 	notifier := notifications.New()
+	// A second launch asks for the settings window; served once it exists.
+	secondLaunch := make(chan struct{}, 1)
 	app = application.New(application.Options{
 		Name:     appinfo.DisplayName,
 		Services: []application.Service{application.NewService(service), application.NewService(notifier)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(frontend.Dist),
 		},
+		// One app per user: a second one would fight over the named pipe and
+		// the engine-agent session. Launching it again opens the settings of
+		// the running one instead (the new process exits inside New).
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: appinfo.ID,
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				logger.Info("second launch: showing the settings")
+				select {
+				case secondLaunch <- struct{}{}:
+				default: // one request is already waiting
+				}
+			},
+		},
 		// Stay in the tray when the settings window closes; only Quit exits.
 		Windows: application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
 		Linux:   application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 	})
+
+	// Only the first instance gets here: now the log file can be opened.
+	if logFile, err := logWriter.OpenFile(logDir); err != nil {
+		logger.Warn("log file", "err", err)
+	} else {
+		defer logFile.Close()
+	}
 
 	openSettings := singleWindow(app, application.WebviewWindowOptions{
 		Name: "settings", Title: appinfo.DisplayName + " - 設定", Width: 420, Height: 720, URL: "/",
@@ -101,6 +117,12 @@ func main() {
 	openSetup := singleWindow(app, application.WebviewWindowOptions{
 		Name: "setup", Title: appinfo.DisplayName + " - セットアップ", Width: 480, Height: 560, URL: "/setup.html",
 	})
+
+	go func() {
+		for range secondLaunch {
+			application.InvokeAsync(openSettings)
+		}
+	}()
 
 	// VM operations block (Start waits for the engine), so run them off the UI thread.
 	run := func(op func(context.Context)) {
