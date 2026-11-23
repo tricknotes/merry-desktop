@@ -11,7 +11,7 @@ all: lint test build
 
 build: spike-wails
 
-test:
+test: spike-wails-frontend
 	cd $(WAILS_SPIKE) && GOOS=windows GOARCH=amd64 go vet ./...
 
 lint:
