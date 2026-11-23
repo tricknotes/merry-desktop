@@ -1,4 +1,7 @@
-# Lint, test and build with the same container as local development (compose.yaml).
+# Lint, test and build with the Makefile, using the same Go and Node.js
+# versions as the local builder image (build/dev/Dockerfile). The toolchains
+# come from setup-go / setup-node so that their caches make repeated runs fast;
+# builder-image.yml checks the image itself when it changes.
 name: build
 
 on:
@@ -9,18 +12,27 @@ on:
 permissions:
   contents: read
 
+env:
+  # Keep in sync with build/dev/Dockerfile.
+  GO_VERSION: "1.27.4"
+  NODE_VERSION: "26.13.1"
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Build the builder image
-        run: docker compose build builder
+      - uses: actions/setup-go@v7.1.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: make all
-        run: |
-          export DEV_UID=$(id -u) DEV_GID=$(id -g)
-          docker compose run --rm builder make all
+        run: make all
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-binaries
@@ -36,16 +48,16 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.1.0
         with:
-          go-version: "1.27.4"
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: "26.13.1"
-      - name: Build the engine-agent and the frontend (embedded by the packages)
+          go-version: ${{ env.GO_VERSION }}
+      # The packages embed the built frontend and the engine-agent, but the
+      # tests only need the files to exist; the real ones are built (and the
+      # app with them) by the build job.
+      - name: Placeholder embedded files
         shell: bash
         run: |
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-w -s" -o internal/vm/wsl/assets/engine-agent ./cmd/engine-agent
-          gzip -9 -n -f internal/vm/wsl/assets/engine-agent
-          cd frontend && npm ci && npm run build
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>test</title>' > frontend/dist/index.html
+          echo 'placeholder' | gzip -n > internal/vm/wsl/assets/engine-agent.gz
       - name: go vet
         run: go vet ./...
       - name: go test
