@@ -41,14 +41,29 @@ jobs:
   # Runs the Go tests on Windows, including the code that only works there
   # (named pipes, the registry, the Windows certificate store). GitHub's Windows
   # runners have no Smart App Control, so unsigned test binaries run.
+  # go vet and the build for Windows are done by the build job (GOOS=windows),
+  # so this job only tests.
   windows:
     runs-on: windows-2025
     timeout-minutes: 30
+    env:
+      # actions/cache restores the Go caches from D: in ~3 s; setup-go's own
+      # cache (on C:) took ~20 s to restore.
+      GOCACHE: D:\go-build
+      GOMODCACHE: D:\go-mod
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.1.0
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            D:\go-build
+            D:\go-mod
+          key: go-windows-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-windows-${{ env.GO_VERSION }}-
       # The packages embed the built frontend and the engine-agent, but the
       # tests only need the files to exist; the real ones are built (and the
       # app with them) by the build job.
@@ -58,9 +73,5 @@ jobs:
           mkdir -p frontend/dist
           echo '<!doctype html><title>test</title>' > frontend/dist/index.html
           echo 'placeholder' | gzip -n > internal/vm/wsl/assets/engine-agent.gz
-      - name: go vet
-        run: go vet ./...
       - name: go test
         run: go test -v ./internal/...
-      - name: Build the app natively
-        run: go build -o merry-desktop.exe ./cmd/merry-desktop

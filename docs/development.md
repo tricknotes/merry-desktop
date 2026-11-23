@@ -142,8 +142,9 @@ docker --context merry-dev-engine ps   # start の間、このディストリの
 (setup-go と setup-node のキャッシュを効かせるため)。
 
 - `build` ジョブ: `make all`(lint、Linux でのテスト、Windows 向けのビルド)。成果物 `windows-binaries` を残す
-- `windows` ジョブ: Windows で `go vet` と `go test ./internal/...`(名前付きパイプ、レジストリ、証明書ストアの
-  テストを含む)。埋め込むフロントと engine-agent は仮のファイルで代える
+- `windows` ジョブ: Windows で `go test ./internal/...`(名前付きパイプ、レジストリ、証明書ストアのテストを含む)。
+  Windows 向けの `go vet` とビルドは `build` ジョブが行う。埋め込むフロントと engine-agent は仮のファイルで代える。
+  Go のキャッシュは D: に置き、`actions/cache` で扱う(setup-go のキャッシュより復元がずっと速い)
 - `builder-image.yml`: `build/dev/` か `compose.yaml` が変わったときだけ、ビルド用イメージを作って中で `make all` を動かす
 
 Go と Node.js の版は `build/dev/Dockerfile` と `build.yml` の両方に書いてあるので、そろえて変える。
