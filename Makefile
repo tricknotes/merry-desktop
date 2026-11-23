@@ -26,6 +26,7 @@ agent:
 test: frontend agent
 	go test -race ./internal/... ./cmd/engine-agent/
 	go vet ./cmd/merry-dev/
+	go test ./cmd/merry-dev/
 	$(WINDOWS_ENV) go vet ./...
 
 lint:
