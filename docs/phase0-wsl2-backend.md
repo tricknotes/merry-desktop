@@ -126,15 +126,16 @@ docker context create phase0-engine --docker host=npipe:////./pipe/phase0-engine
    この検証環境でも、PowerShell が書いたファイルが仮想化されて `/mnt/c` から見えなかった。
 7. **名前付きパイプの中継は、接続ごとに `wsl.exe` を起動するため1要求に約0.7秒かかる。**
    `docker` CLI は1コマンドで複数回接続するため、体感で遅くなる。
-   → フェーズ1で Go に実装するときは、常時つないでおく経路(AF_VSOCK / Hyper-V ソケットなど)を検討する。
-8. **バインドマウントは、Engine のディストリ側のパスで解決される。**(2026-11-23 追記)
+   → アプリは、VM の中の engine-agent と1本の `wsl.exe` セッションでつなぎ、その上で接続を多重化している
+   (`internal/mux`)。1要求は約1ms。
+8. **バインドマウントは、Engine のディストリ側のパスで解決される。**
    利用者の Ubuntu などで `-v $PWD:/src` や Compose の `volumes: [.:/src]` を使うと、Engine のディストリには
    そのパスがないため、空のディレクトリがマウントされる。Windows のパス(`C:\...`)も同様に変換が要る。
    0-3 で通した `docker compose up` はバインドマウントを使わない構成だったため、この問題は出なかった。
    → 「既存の Compose ファイルが無変更で動く」(6章)には、パスの変換が必須。
-   案: 利用者のディストリの `/` を `/mnt/wsl/<名前>/distros/<ディストリ>` にバインドし、
-   フェーズ1の Go の中継が Engine API の要求(コンテナ作成時の `Binds` と `Mounts`)のパスを書き換える。
-   Docker Desktop も同様の仕組みを持つ(未確認)。フェーズ1の設計で扱う。
+   アプリでは、engine-agent がコンテナ作成時の `Binds` と `Mounts` のパスを書き換える(`internal/engineapi`)。
+   Windows のパスは `/mnt/<ドライブ>/...` に、連携した WSL ディストリのパスは、そのディストリの `/` を
+   バインドした `/mnt/wsl/<名前>/distros/<ディストリ>/...` に変換する。
 9. **Smart App Control は、自分で書いた PowerShell スクリプトは止めなかった。** 署名のない exe は止める(フェーズ0の 0-2 で確認)。
 
 ## 未検証のこと
@@ -147,7 +148,6 @@ docker context create phase0-engine --docker host=npipe:////./pipe/phase0-engine
 - WSL の VM 自体が止まっているところからのコールドスタート時間。
 - コンテナ内のプロセスへのプロキシの反映。今回反映したのは Engine(pull)とディストリまで。
   コンテナに渡すには、利用者の `~/.docker/config.json` の `proxies` か、`docker run -e` が必要になる。フェーズ1で扱いを決める。
-- バインドマウントのパス変換(上記の発見 8)。案の段階で、試作していない。
 - 管理者権限が要る操作。この手順は、WSL2 が有効になっていれば一般ユーザーで動いた。WSL2 の有効化自体は後回しの決定どおり扱っていない。
 
 ## 人間に依頼したい確認
