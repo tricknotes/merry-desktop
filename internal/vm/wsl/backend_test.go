@@ -3,6 +3,7 @@ package wsl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
@@ -146,11 +147,16 @@ func (f *fakeRunner) Start(args ...string) (Process, error) {
 
 func newTestBackend(t *testing.T, f *fakeRunner) *Backend {
 	dir := t.TempDir()
-	return &Backend{
+	b := &Backend{
 		Distro: "test-engine", Runner: f, ReadyTimeout: time.Second, PollInterval: time.Millisecond,
 		ConfigPath: filepath.Join(dir, ".wslconfig"), StatePath: filepath.Join(dir, "state", "wsl-state.json"),
 		MaxCPUs: 8, Now: func() time.Time { return time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC) },
+		// On Windows, Start opens a named pipe; give every test its own name
+		// (another engine may own docker_engine on the machine).
+		PipeNames: []string{fmt.Sprintf(`\\.\pipe\merry-test-%d`, time.Now().UnixNano())},
 	}
+	t.Cleanup(func() { _ = b.endSession() })
+	return b
 }
 
 func TestParseList(t *testing.T) {

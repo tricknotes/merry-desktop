@@ -11,17 +11,30 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+// userEnvironmentKey holds the user's environment variables under HKCU.
+const userEnvironmentKey = "Environment"
+
 // addToUserPath appends dir to the user's PATH (HKCU\Environment) and tells
 // running programs, so that new terminals see it. No administrator is needed.
 func addToUserPath(dir string) error {
-	k, err := registry.OpenKey(registry.CURRENT_USER, "Environment", registry.QUERY_VALUE|registry.SET_VALUE)
+	changed, err := addToPathValue(userEnvironmentKey, dir)
+	if err == nil && changed {
+		broadcastEnvironmentChange()
+	}
+	return err
+}
+
+// addToPathValue appends dir to the Path value of HKCU\<keyPath>, keeping the
+// value type (REG_EXPAND_SZ or REG_SZ). It reports whether it changed anything.
+func addToPathValue(keyPath, dir string) (bool, error) {
+	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, registry.QUERY_VALUE|registry.SET_VALUE)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer k.Close()
 	current, typ, err := k.GetStringValue("Path")
 	if err != nil && err != registry.ErrNotExist {
-		return err
+		return false, err
 	}
 	expand := func(s string) string {
 		if v, err := registry.ExpandString(s); err == nil {
@@ -31,18 +44,14 @@ func addToUserPath(dir string) error {
 	}
 	updated, changed := withPathEntry(current, dir, expand)
 	if !changed {
-		return nil
+		return false, nil
 	}
 	if typ == registry.EXPAND_SZ {
 		err = k.SetExpandStringValue("Path", updated)
 	} else {
 		err = k.SetStringValue("Path", updated)
 	}
-	if err != nil {
-		return err
-	}
-	broadcastEnvironmentChange()
-	return nil
+	return err == nil, err
 }
 
 // broadcastEnvironmentChange sends WM_SETTINGCHANGE("Environment") like the

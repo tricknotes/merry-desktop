@@ -46,6 +46,9 @@ type Backend struct {
 	HostCLI hostCLI
 	// HostPath converts local paths for wsl.exe arguments (nil: unchanged).
 	HostPath func(string) string
+	// PipeNames are the named pipes tried in order for the host CLI (Windows;
+	// nil: \\.\pipe\docker_engine, then one named after the distro).
+	PipeNames []string
 
 	// Distros overrides which WSL distros are integrated (nil: the default
 	// distro only, see distros.go).

@@ -43,7 +43,11 @@ func (b *Backend) startEndpoint() error {
 		name     string
 		errs     []string
 	)
-	for _, n := range pipeNames(b.Distro) {
+	names := b.PipeNames
+	if names == nil {
+		names = pipeNames(b.Distro)
+	}
+	for _, n := range names {
 		l, err := winio.ListenPipe(n, &winio.PipeConfig{SecurityDescriptor: sddl})
 		if err == nil {
 			listener, name = l, n
