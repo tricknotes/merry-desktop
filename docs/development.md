@@ -36,44 +36,21 @@ docker compose run --rm builder make build  # ビルドだけ
 
 ## 実機で試すとき
 
-アプリが操作する VM(WSL ディストリ)はまだ自動では作らない(F-10 で実装する)。
-フェーズ0のスクリプトで作ったディストリを、環境変数で指定して使う。
+CI の成果物 `windows-binaries` の `merry-desktop.exe` を起動する。VM がまだなければ、セットアップウィンドウが開く(F-10)。
+セットアップは次を順に行う。
+
+1. WSL2 が使えるかの確認(`wsl --status`)
+2. ホストのプロキシ(環境変数、なければ WinINET)と、信頼されたルート証明書の読み取り
+3. 専用ディストリ `merry-desktop-engine` の作成(`%LOCALAPPDATA%\merry-desktop-engine` に置く)
+4. VM の起動
+5. `docker run --rm hello-world`
+
+フェーズ0のスクリプトで作ったディストリを使うときは、環境変数 `MERRY_ENGINE_NAME` で指定する。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\phase0\wsl2\new-engine-distro.ps1 -Name merry-desktop-engine
-# または既存の phase0-engine を使う:
 $env:MERRY_ENGINE_NAME = "phase0-engine"
 .\merry-desktop.exe
 ```
-
-CI の成果物 `windows-binaries` に `merry-desktop.exe` が入っている。
-
-Go のモジュール、ビルドキャッシュ、npm のキャッシュは名前付きボリュームに残る。
-キャッシュのない状態で約28秒、2回目以降のビルドは約2.5秒だった(2026-11-23、`phase0-engine` 上)。
-
-CI(`.github/workflows/build.yml`)も同じイメージと Makefile を使う。
-
-## Engine が別の WSL ディストリにある場合
-
-`compose.yaml` は、このチェックアウトを `/src` にバインドマウントする。
-バインドマウントのパスは Engine 側で解決されるため、Engine が別の WSL ディストリにあると
-(フェーズ0の `phase0-engine` など)、`/src` が空になる。
-
-そのときは、チェックアウトを `/mnt/wsl`(すべての WSL2 ディストリで共有される)にバインドマウントし、
-`DEV_SRC` でその場所を渡す。
-
-```bash
-sudo mkdir -p /mnt/wsl/phase0-share/merry-desktop
-sudo mount --bind "$PWD" /mnt/wsl/phase0-share/merry-desktop   # WSL を再起動すると消える
-export DOCKER_HOST=unix:///mnt/wsl/phase0-engine/docker.sock
-export DEV_SRC=/mnt/wsl/phase0-share/merry-desktop
-docker compose run --rm builder make all
-```
-
-`phase0-engine` は、`wsl.exe` のセッションがないと WSL に止められる。使う間は別のターミナルで
-`wsl.exe -d phase0-engine -u root --exec sleep infinity` を動かしておく。
-
-Rancher Desktop や Colima など、利用者の環境と同じディストリから見える Engine を使う場合は、`DEV_SRC` はいらない。
 
 ## 動作確認
 

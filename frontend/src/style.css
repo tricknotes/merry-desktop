@@ -46,3 +46,21 @@ button {
   margin: 0;
   opacity: 0.8;
 }
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.steps .mark {
+  display: inline-block;
+  width: 1.5em;
+}
+
+.steps li[data-state="done"] .mark { color: green; }
+.steps li[data-state="failed"] .mark,
+.steps li[data-state="failed"] .detail { color: crimson; }
+.steps .detail { margin-left: 1.5em; }

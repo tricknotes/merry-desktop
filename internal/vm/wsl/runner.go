@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -24,9 +25,20 @@ type Process interface {
 	Done() <-chan struct{}
 }
 
+// RunOptions are extra inputs for one wsl.exe invocation.
+type RunOptions struct {
+	// Stdin is written to wsl.exe's standard input.
+	Stdin []byte
+	// Env adds variables for the Linux side. They are passed through WSLENV,
+	// so values (a proxy URL with a password, for example) never appear on the
+	// command line.
+	Env map[string]string
+}
+
 // Runner runs wsl.exe. Tests replace it with a fake.
 type Runner interface {
 	Run(ctx context.Context, args ...string) (Result, error)
+	RunWith(ctx context.Context, opts RunOptions, args ...string) (Result, error)
 	Start(args ...string) (Process, error)
 }
 
@@ -59,8 +71,28 @@ func (r ExecRunner) command(ctx context.Context, args []string) *exec.Cmd {
 // Run runs wsl.exe and waits for it. A non-zero exit code is reported in the
 // Result, not as an error; the error is for failures to run wsl.exe at all.
 func (r ExecRunner) Run(ctx context.Context, args ...string) (Result, error) {
+	return r.RunWith(ctx, RunOptions{}, args...)
+}
+
+// RunWith is Run with standard input and extra environment variables.
+func (r ExecRunner) RunWith(ctx context.Context, opts RunOptions, args ...string) (Result, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := r.command(ctx, args)
+	if opts.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(opts.Stdin)
+	}
+	if len(opts.Env) > 0 {
+		names := make([]string, 0, len(opts.Env))
+		for k, v := range opts.Env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		if existing := os.Getenv("WSLENV"); existing != "" {
+			names = append([]string{existing}, names...)
+		}
+		cmd.Env = append(cmd.Env, "WSLENV="+strings.Join(names, ":"))
+	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()

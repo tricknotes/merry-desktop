@@ -21,7 +21,7 @@ test: frontend
 	$(WINDOWS_ENV) go vet ./...
 
 lint:
-	shellcheck --shell=sh scripts/phase0/wsl2/*.sh
+	shellcheck --shell=sh scripts/phase0/wsl2/*.sh internal/vm/wsl/assets/*.sh
 	@unformatted="$$(gofmt -l $(GO_DIRS))"; \
 	if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 

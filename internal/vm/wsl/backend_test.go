@@ -36,13 +36,24 @@ type fakeRunner struct {
 	startErr  error
 	resized   []string
 	shutdowns int
+	// handle answers calls before the defaults; ok=false falls through.
+	handle func(opts RunOptions, args []string) (Result, bool)
 }
 
-func (f *fakeRunner) Run(_ context.Context, args ...string) (Result, error) {
+func (f *fakeRunner) Run(ctx context.Context, args ...string) (Result, error) {
+	return f.RunWith(ctx, RunOptions{}, args...)
+}
+
+func (f *fakeRunner) RunWith(_ context.Context, opts RunOptions, args ...string) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	joined := strings.Join(args, " ")
 	f.calls = append(f.calls, joined)
+	if f.handle != nil {
+		if res, ok := f.handle(opts, args); ok {
+			return res, nil
+		}
+	}
 	switch {
 	case joined == "--list --verbose":
 		if f.state == "" {
