@@ -1,0 +1,27 @@
+# Lint, test and build with the same container as local development (compose.yaml).
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build the builder image
+        run: docker compose build builder
+      - name: make all
+        run: |
+          export DEV_UID=$(id -u) DEV_GID=$(id -g)
+          docker compose run --rm builder make all
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: windows-binaries
+          path: spikes/wails/bin/
