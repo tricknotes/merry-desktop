@@ -43,10 +43,16 @@ type Backend struct {
 	RootfsSHA256 string
 	HTTPClient   *http.Client
 
-	mu        sync.Mutex
-	keepalive StdioProcess // the engine-agent session (see agent.go)
-	session   *mux.Session
-	endpoint  *endpoint // where the host docker CLI connects (Windows: a named pipe)
+	// Distros overrides which WSL distros are integrated (nil: the default
+	// distro only, see distros.go).
+	Distros []string
+
+	mu          sync.Mutex
+	integrated  []string        // distros served by the running agent
+	contextDone map[string]bool // docker context checked in this run
+	keepalive   StdioProcess    // the engine-agent session (see agent.go)
+	session     *mux.Session
+	endpoint    *endpoint // where the host docker CLI connects (Windows: a named pipe)
 }
 
 var _ vm.Backend = (*Backend)(nil)
@@ -116,6 +122,14 @@ func (b *Backend) DialEngine(meta string) (net.Conn, error) {
 	return s.Open([]byte(meta))
 }
 
+func (b *Backend) listOrNil(ctx context.Context) []distro {
+	res, err := b.Runner.Run(ctx, "--list", "--verbose")
+	if err != nil || res.ExitCode != 0 {
+		return nil
+	}
+	return parseList(res.Stdout)
+}
+
 // engineReady reports whether Docker Engine answers inside the distro.
 func (b *Backend) engineReady(ctx context.Context) bool {
 	res, err := b.Runner.Run(ctx, b.inDistro("docker", "version", "--format", "{{.Server.Version}}")...)
@@ -156,13 +170,15 @@ func (b *Backend) Start(ctx context.Context) error {
 		if err := b.ensureAgent(ctx); err != nil {
 			return err
 		}
-		p, err := b.Runner.StartStdio(b.agentCommand()...)
+		targets := b.integrationTargets(b.listOrNil(ctx))
+		p, err := b.Runner.StartStdio(b.agentCommand(targets)...)
 		if err != nil {
 			return fmt.Errorf("start %s: %w", b.Distro, err)
 		}
 		b.mu.Lock()
 		b.keepalive = p
 		b.session = mux.Client(p)
+		b.integrated = targets
 		b.mu.Unlock()
 	}
 
@@ -170,6 +186,8 @@ func (b *Backend) Start(ctx context.Context) error {
 	defer cancel()
 	for {
 		if b.engineReady(ctx) {
+			// Best effort: a distro that cannot be integrated must not stop the engine.
+			_ = b.Maintain(ctx)
 			return b.startEndpoint()
 		}
 		select {

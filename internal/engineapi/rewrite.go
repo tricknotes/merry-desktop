@@ -41,6 +41,28 @@ func WindowsPaths(distroRoot string) Translator {
 	}
 }
 
+// DistroPaths translates paths from a docker CLI inside another WSL distro.
+// The distro's root is bind-mounted at <distroRoot>/<distro> in the engine VM:
+//
+//	/home/me/proj    -> <distroRoot>/<distro>/home/me/proj
+//	/mnt/c/Users/me  -> unchanged (the engine VM has the same drive mounts)
+//	/mnt/wsl/...     -> unchanged (shared by all WSL2 distros)
+func DistroPaths(distroRoot, distro string) Translator {
+	base := strings.TrimRight(distroRoot, "/") + "/" + distro
+	return func(p string) (string, bool) {
+		if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "/mnt/wsl/") || p == "/mnt/wsl" || driveMount.MatchString(p) {
+			return "", false
+		}
+		if p == "/" {
+			return base, true
+		}
+		return base + p, true
+	}
+}
+
+// driveMount matches WSL's automount of Windows drives (/mnt/c, /mnt/c/...).
+var driveMount = regexp.MustCompile(`^/mnt/[a-zA-Z](/|$)`)
+
 // splitBind splits a HostConfig.Binds entry "src:dst[:opts]" where src may
 // itself contain a drive letter colon (C:\x:/y:ro).
 func splitBind(bind string) (src, rest string) {

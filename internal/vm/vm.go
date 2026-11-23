@@ -138,3 +138,9 @@ type Provisioner interface {
 	// short, user-facing lines; it must not block.
 	Provision(ctx context.Context, network Network, progress func(string)) error
 }
+
+// Maintainer is implemented by backends that need periodic upkeep while the VM
+// runs (for example re-creating mounts lost when another VM restarted).
+type Maintainer interface {
+	Maintain(ctx context.Context) error
+}

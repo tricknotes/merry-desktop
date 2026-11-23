@@ -19,6 +19,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/tricknotes/merry-desktop/internal/engineapi"
 	"github.com/tricknotes/merry-desktop/internal/mux"
@@ -62,17 +64,72 @@ func main() {
 	}
 }
 
+// names collects a repeated flag.
+type names []string
+
+func (n *names) String() string     { return strings.Join(*n, ",") }
+func (n *names) Set(v string) error { *n = append(*n, v); return nil }
+
 func serveStdio(args []string) error {
 	fs := flag.NewFlagSet("stdio", flag.ContinueOnError)
 	socket := fs.String("engine-socket", "/var/run/docker.sock", "Docker Engine socket")
-	distroRoot := fs.String("distro-root", "", "where other WSL distros' roots are visible (for \\\\wsl$ paths)")
+	distroRoot := fs.String("distro-root", "", "where other WSL distros' roots are bind-mounted")
+	runDir := fs.String("run-dir", "", "directory for the per-distro sockets (under /mnt/wsl)")
+	var distros names
+	fs.Var(&distros, "distro", "serve a socket for this WSL distro (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	log.Info("engine-agent serving", "version", version, "socket", *socket)
+	log.Info("engine-agent serving", "version", version, "socket", *socket, "distros", distros.String())
+
+	var servers []*http.Server
+	for _, d := range distros {
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, log)
+		if err != nil {
+			log.Error("distro socket", "distro", d, "err", err)
+			continue
+		}
+		servers = append(servers, srv)
+	}
+	defer func() {
+		for _, s := range servers {
+			_ = s.Close()
+		}
+	}()
 	// Only the protocol may go to stdout; everything else goes to stderr.
 	return serve(stdio{Reader: os.Stdin, Writer: os.Stdout}, *socket, *distroRoot, log)
+}
+
+// serveDistro listens on <runDir>/<distro>/docker.sock for the docker CLI in
+// that WSL distro and rewrites its paths to where its root is bind-mounted.
+// The socket is world-accessible on purpose: /mnt/wsl is reachable only from
+// this Windows user's WSL distros, which can run as root in the VM anyway
+// (docs/phase0-wsl2-backend.md, finding 4).
+func serveDistro(runDir, distro, socket, distroRoot string, log *slog.Logger) (*http.Server, error) {
+	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
+		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
+	}
+	dir := filepath.Join(runDir, distro)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "docker.sock")
+	_ = os.Remove(path) // left over from a previous run
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		_ = l.Close()
+		return nil, err
+	}
+	srv := &http.Server{
+		Handler:  engineapi.NewProxy(socket, engineapi.DistroPaths(distroRoot, distro), log),
+		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+	}
+	go func() { _ = srv.Serve(l) }()
+	return srv, nil
 }
 
 // serve relays engine API requests arriving as mux streams on conn until the

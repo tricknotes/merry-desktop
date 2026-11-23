@@ -45,6 +45,8 @@ type fakeRunner struct {
 	// agentInstalls counts installs of the embedded engine-agent.
 	agentInstalls int
 	agentHash     string
+	// integrations are the commands run in the user's distro (mount, context).
+	integrations []string
 }
 
 func (f *fakeRunner) Run(ctx context.Context, args ...string) (Result, error) {
@@ -81,6 +83,9 @@ func (f *fakeRunner) RunWith(_ context.Context, opts RunOptions, args ...string)
 	case strings.Contains(joined, "gunzip -c > "+agentPath+".new"):
 		f.agentInstalls++
 		f.agentHash = agentSHA256
+		return Result{}, nil
+	case strings.HasPrefix(joined, "--distribution Ubuntu ") && strings.Contains(joined, "sh -c "):
+		f.integrations = append(f.integrations, joined)
 		return Result{}, nil
 	case strings.HasPrefix(joined, "--manage test-engine --resize "):
 		if f.state == "Running" {
@@ -170,7 +175,7 @@ func TestStartWaitsForEngineAndKeepsSessionOpen(t *testing.T) {
 	if len(f.started) != 1 {
 		t.Fatalf("keepalive sessions = %d, want 1", len(f.started))
 	}
-	want := "start: " + strings.Join(b.agentCommand(), " ")
+	want := "start: " + strings.Join(b.agentCommand([]string{"Ubuntu"}), " ")
 	found := false
 	for _, c := range f.calls {
 		found = found || c == want
