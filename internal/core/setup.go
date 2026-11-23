@@ -106,7 +106,16 @@ func (c *Controller) Setup(ctx context.Context, emit func(SetupEvent)) error {
 	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "Hello from Docker!") {
 		return fail(vm.StepVerify, fmt.Errorf("hello-world が失敗しました(終了コード %d): %s", res.ExitCode, lastLine(res.Stderr+res.Stdout)))
 	}
-	emit(SetupEvent{Step: vm.StepVerify, State: SetupDone, Message: "hello-world が動きました。セットアップは完了です"})
+	emit(SetupEvent{Step: vm.StepVerify, State: SetupDone, Message: "hello-world が動きました"})
+
+	if h, ok := c.backend.(vm.HostIntegrator); ok {
+		emit(SetupEvent{Step: vm.StepHostCLI, State: SetupRunning, Message: "ターミナルから docker を使えるようにしています"})
+		progress := func(line string) { emit(SetupEvent{Step: vm.StepHostCLI, State: SetupRunning, Message: line}) }
+		if err := h.IntegrateHost(ctx, network, progress); err != nil {
+			return fail(vm.StepHostCLI, err)
+		}
+		emit(SetupEvent{Step: vm.StepHostCLI, State: SetupDone, Message: "新しいターミナルで docker と docker compose を使えます"})
+	}
 	return nil
 }
 

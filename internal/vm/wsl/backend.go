@@ -42,6 +42,8 @@ type Backend struct {
 	RootfsURL    string
 	RootfsSHA256 string
 	HTTPClient   *http.Client
+	// HostCLI is where the Windows docker CLI is installed (F-04).
+	HostCLI hostCLI
 
 	// Distros overrides which WSL distros are integrated (nil: the default
 	// distro only, see distros.go).
@@ -59,7 +61,7 @@ var _ vm.Backend = (*Backend)(nil)
 
 // New returns a Backend for the given distro using the real wsl.exe.
 func New(distro string) *Backend {
-	return &Backend{
+	b := &Backend{
 		Distro:       distro,
 		Runner:       ExecRunner{},
 		ReadyTimeout: 60 * time.Second,
@@ -70,6 +72,8 @@ func New(distro string) *Backend {
 		RootfsURL:    alpineURL(),
 		RootfsSHA256: alpineSHA256,
 	}
+	b.HostCLI = defaultHostCLI(b.InstallRoot)
+	return b
 }
 
 func (b *Backend) inDistro(args ...string) []string {

@@ -24,6 +24,20 @@ Windows 版には入らない。macOS 版を作るとき(フェーズ3)に確認
 Go 標準ライブラリ(BSD-3-Clause)と、このリポジトリのコードだけでできている。アプリ本体に gzip で埋め込む。
 接続の多重化(`internal/mux`)は自作した(既製の yamux は MPL-2.0 のため使わなかった)。
 
+### セットアップ時にダウンロードするもの(F-04、F-10)
+
+アプリには含めず、セットアップ時に取得して SHA-256 を検証する。
+
+| ソフトウェア | 版 | ライセンス | 置き場所 |
+| --- | --- | --- | --- |
+| Alpine Linux minirootfs | 3.24.4 | 構成物ごと(下記「フェーズ0 WSL2」の表を参照) | VM |
+| Docker Engine 静的バイナリ | 29.10.0 | Apache-2.0 | VM |
+| Docker Compose(Linux) | v5.8.0 | Apache-2.0 | VM |
+| docker CLI(Windows、`download.docker.com` の静的バイナリ) | 29.10.0 | Apache-2.0 | `%LOCALAPPDATA%\<VM名>\bin\docker.exe` |
+| Docker Compose(Windows) | v5.8.0 | Apache-2.0 | `%USERPROFILE%\.docker\cli-plugins\docker-compose.exe`(なければ) |
+
+どれも Docker Desktop のものではない。
+
 ### フロント(`frontend/`)
 
 `spikes/wails/frontend` と同じ構成(`@wailsio/runtime` MIT、Vite MIT、TypeScript Apache-2.0)。
