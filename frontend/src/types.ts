@@ -27,4 +27,7 @@ export interface Bridge {
   planResources(resources: Resources): Promise<ResourcePlan>;
   applyResources(resources: Resources, restartNow: boolean): Promise<void>;
   onChange(listener: (snapshot: Snapshot) => void): void;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  restart(): Promise<void>;
 }

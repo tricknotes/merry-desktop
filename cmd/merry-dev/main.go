@@ -6,7 +6,7 @@
 // Windows executables cannot run. Windows-only parts (tray, named pipe, PATH,
 // docker.exe) are not covered.
 //
-//	merry-dev [-name NAME] setup | start | stop | status | resources | diagnostics | unregister
+//	merry-dev [-name NAME] setup | start | stop | status | resources | diagnostics | ui | unregister
 package main
 
 import (
@@ -37,6 +37,7 @@ commands:
   status       show the VM status and resources
   resources    show or change CPUs, memory (.wslconfig) and the disk limit
   diagnostics  write the diagnostic report (zip)
+  ui           open the settings and setup windows in the Windows browser
   unregister   delete the VM and everything in it (needs -yes)
 
 The default VM name is merry-dev-engine, separate from the app's VM.
@@ -88,6 +89,8 @@ func main() {
 		err = diagnostics(ctx, c, args)
 	case "unregister":
 		err = unregister(ctx, backend, args)
+	case "ui":
+		err = ui(ctx, c, args)
 	default:
 		global.Usage()
 		os.Exit(2)

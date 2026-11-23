@@ -1,4 +1,5 @@
 import { bridge } from "./bridge";
+import { showDevNav } from "./native";
 import { initRegistries } from "./registry";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
@@ -17,11 +18,30 @@ const cpusEl = document.querySelector<HTMLInputElement>("#cpus")!;
 const memoryEl = document.querySelector<HTMLInputElement>("#memory")!;
 const diskEl = document.querySelector<HTMLInputElement>("#disk")!;
 const messageEl = document.querySelector<HTMLParagraphElement>("#message")!;
+const startEl = document.querySelector<HTMLButtonElement>("#start")!;
+const stopEl = document.querySelector<HTMLButtonElement>("#stop")!;
+const restartEl = document.querySelector<HTMLButtonElement>("#restart")!;
 
 function show(snapshot: Snapshot): void {
   statusEl.dataset.status = snapshot.status;
   statusEl.textContent = STATUS_LABELS[snapshot.status];
   detailEl.textContent = snapshot.message;
+  // Same rules as the tray menu.
+  const s = snapshot.status;
+  startEl.disabled = !(s === "stopped" || s === "error");
+  stopEl.disabled = !(s === "running" || s === "error");
+  restartEl.disabled = !(s === "running" || s === "error");
+}
+
+for (const [el, op] of [
+  [startEl, bridge.start],
+  [stopEl, bridge.stop],
+  [restartEl, bridge.restart],
+] as const) {
+  el.addEventListener("click", () => {
+    detailEl.textContent = "";
+    op().catch((error) => (detailEl.textContent = String(error)));
+  });
 }
 
 /** An empty field means "default", sent as 0. */
@@ -68,6 +88,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 async function init(): Promise<void> {
+  showDevNav();
   bridge.onChange(show);
   const snapshot = await bridge.getSnapshot();
   show(snapshot);
