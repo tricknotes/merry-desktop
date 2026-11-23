@@ -52,10 +52,20 @@ type Session struct {
 	done    chan struct{}
 }
 
-// Client starts a session that opens streams.
+// firstID gives each side its own stream IDs (client odd, server even), so
+// that both may open streams at the same time.
+func firstID(client bool) uint32 {
+	if client {
+		return 1
+	}
+	return 2
+}
+
+// Client starts a session. Either side may open and accept streams; the client
+// is the side that usually opens them.
 func Client(conn io.ReadWriteCloser) *Session { return newSession(conn, true) }
 
-// Server starts a session that accepts streams.
+// Server starts the other side of a session.
 func Server(conn io.ReadWriteCloser) *Session { return newSession(conn, false) }
 
 func newSession(conn io.ReadWriteCloser, client bool) *Session {
@@ -64,7 +74,7 @@ func newSession(conn io.ReadWriteCloser, client bool) *Session {
 		client:  client,
 		w:       bufio.NewWriterSize(conn, MaxPayload+headerSize),
 		streams: map[uint32]*Stream{},
-		nextID:  1,
+		nextID:  firstID(client),
 		accept:  make(chan *Stream, 16),
 		done:    make(chan struct{}),
 	}

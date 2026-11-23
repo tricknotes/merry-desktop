@@ -2,6 +2,7 @@ package wsl
 
 import (
 	"context"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -49,5 +50,37 @@ func TestStartIntegratesTheDefaultDistro(t *testing.T) {
 	}
 	if len(f.integrations) != 3 || !strings.Contains(f.integrations[2], "mount --bind") {
 		t.Errorf("after Maintain: %v", f.integrations)
+	}
+}
+
+func TestAgentCanAskForARemount(t *testing.T) {
+	f := &fakeRunner{state: "Stopped"}
+	b := newTestBackend(t, f)
+	if err := b.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	before := len(f.integrations)
+	ask := func(meta string) string {
+		st, err := f.agents[0].Open([]byte(meta))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		buf := make([]byte, 128)
+		n, _ := io.ReadFull(st, buf[:1])
+		m, _ := st.Read(buf[n:])
+		return strings.TrimSpace(string(buf[:n+m]))
+	}
+	if got := ask(controlMount + "Ubuntu"); got != "ok" {
+		t.Fatalf("reply = %q", got)
+	}
+	if len(f.integrations) != before+1 || !strings.Contains(f.integrations[before], "mount --bind") {
+		t.Errorf("no mount was run: %v", f.integrations[before:])
+	}
+	if got := ask(controlMount + "Debian"); !strings.HasPrefix(got, "error:") {
+		t.Errorf("remount of a distro that is not integrated = %q", got)
+	}
+	if got := ask("something else"); !strings.HasPrefix(got, "error:") {
+		t.Errorf("unknown request = %q", got)
 	}
 }

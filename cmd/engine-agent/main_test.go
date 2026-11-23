@@ -35,7 +35,9 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 	defer engine.Close()
 
 	hostEnd, agentEnd := net.Pipe()
-	go func() { _ = serve(agentEnd, sock, "/mnt/wsl/e/distros", nil, slog.New(slog.DiscardHandler)) }()
+	go func() {
+		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", nil, slog.New(slog.DiscardHandler))
+	}()
 	session := mux.Client(hostEnd)
 	defer session.Close()
 
@@ -75,7 +77,9 @@ func TestServeDistroSocket(t *testing.T) {
 	defer engine.Close()
 
 	runDir := filepath.Join(dir, "run")
-	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, slog.New(slog.DiscardHandler))
+	ensured := 0
+	ensure := func(context.Context) error { ensured++; return nil }
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, ensure, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +102,10 @@ func TestServeDistroSocket(t *testing.T) {
 		!strings.Contains(got, `"HTTP_PROXY=http://p:3128"`) {
 		t.Errorf("engine got %s", got)
 	}
-	if _, err := serveDistro(runDir, "../etc", sock, "", nil, slog.New(slog.DiscardHandler)); err == nil {
+	if ensured != 1 {
+		t.Errorf("mount check ran %d times, want 1", ensured)
+	}
+	if _, err := serveDistro(runDir, "../etc", sock, "", nil, nil, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("accepted a distro name with a path separator")
 	}
 }
@@ -120,5 +127,42 @@ func TestContainerProxyEnv(t *testing.T) {
 	}
 	if got := containerProxyEnv(filepath.Join(dir, "missing"), log); got != nil {
 		t.Errorf("missing file: %v", got)
+	}
+}
+
+func TestIsMountpoint(t *testing.T) {
+	info := filepath.Join(t.TempDir(), "mountinfo")
+	_ = os.WriteFile(info, []byte(`22 1 8:32 / / rw,relatime - ext4 /dev/sdc rw
+91 60 8:48 / /mnt/wsl/e/distros/Ubuntu rw,relatime shared:1 - ext4 /dev/sdd rw
+92 60 8:48 / /mnt/wsl/e/distros/My\040Distro rw,relatime shared:1 - ext4 /dev/sdd rw
+`), 0o644)
+	for path, want := range map[string]bool{
+		"/mnt/wsl/e/distros/Ubuntu":    true,
+		"/mnt/wsl/e/distros/My Distro": true,
+		"/mnt/wsl/e/distros/Debian":    false,
+	} {
+		if got, err := isMountpoint(info, path); err != nil || got != want {
+			t.Errorf("isMountpoint(%q) = %v, %v; want %v", path, got, err, want)
+		}
+	}
+}
+
+func TestEnsureMountedAsksTheHost(t *testing.T) {
+	hostEnd, agentEnd := net.Pipe()
+	host, agent := mux.Client(hostEnd), mux.Server(agentEnd)
+	defer host.Close()
+	go func() {
+		st, err := host.Accept()
+		if err != nil {
+			return
+		}
+		if string(st.Meta()) == controlMount+"Ubuntu" {
+			_, _ = st.Write([]byte("ok\n"))
+		}
+		_ = st.CloseWrite()
+	}()
+	// The path is not a mount point here, so the host is asked.
+	if err := ensureMounted(context.Background(), agent, "/nonexistent/distros/Ubuntu", "Ubuntu"); err != nil {
+		t.Fatal(err)
 	}
 }

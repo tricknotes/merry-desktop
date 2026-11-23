@@ -187,11 +187,13 @@ func (b *Backend) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("start %s: %w", b.Distro, err)
 		}
+		session := mux.Client(p)
 		b.mu.Lock()
 		b.keepalive = p
-		b.session = mux.Client(p)
+		b.session = session
 		b.integrated = targets
 		b.mu.Unlock()
+		go b.serveControl(session)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, b.ReadyTimeout)

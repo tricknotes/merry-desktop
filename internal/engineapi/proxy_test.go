@@ -2,6 +2,7 @@ package engineapi
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -87,5 +88,25 @@ func TestProxyPassesUpgrades(t *testing.T) {
 	line, _ := r.ReadString('\n')
 	if line != "echo:hello\n" {
 		t.Fatalf("after upgrade got %q", line)
+	}
+}
+
+func TestProxyRunsBeforeCreate(t *testing.T) {
+	sock := fakeEngine(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	calls := 0
+	proxy := httptest.NewServer(NewProxyWith(sock, Options{BeforeCreate: func(context.Context) error {
+		calls++
+		return nil
+	}}, nil))
+	defer proxy.Close()
+	for _, path := range []string{"/v1.57/containers/create", "/v1.57/containers/json", "/containers/create"} {
+		resp, err := http.Post(proxy.URL+path, "application/json", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	if calls != 2 {
+		t.Fatalf("BeforeCreate ran %d times, want 2 (only for container create)", calls)
 	}
 }

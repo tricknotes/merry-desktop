@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/tricknotes/merry-desktop/internal/mux"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
 
@@ -170,4 +172,45 @@ func (b *Backend) SetIntegrations(ctx context.Context, names []string) error {
 		}
 	}
 	return nil
+}
+
+// controlMount is the stream metadata the engine-agent uses to ask for a
+// distro's root to be bind-mounted again (see cmd/engine-agent).
+const controlMount = "mount:"
+
+// serveControl answers requests the agent opens on the session: when a docker
+// CLI in an integrated distro creates a container but the distro's root is not
+// mounted (the distro restarted), the agent asks for it before going on, so
+// the container never sees an empty directory.
+func (b *Backend) serveControl(session *mux.Session) {
+	for {
+		st, err := session.Accept()
+		if err != nil {
+			return
+		}
+		go func() {
+			defer st.Close()
+			reply := "error: unknown request"
+			if distro, ok := strings.CutPrefix(string(st.Meta()), controlMount); ok {
+				reply = b.remount(distro)
+			}
+			_, _ = st.Write([]byte(reply + "\n"))
+			_ = st.CloseWrite()
+		}()
+	}
+}
+
+func (b *Backend) remount(distro string) string {
+	b.mu.Lock()
+	served := slices.Contains(b.integrated, distro)
+	b.mu.Unlock()
+	if !served {
+		return "error: not an integrated distro"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := b.integrate(ctx, distro); err != nil {
+		return "error: " + err.Error()
+	}
+	return "ok"
 }
