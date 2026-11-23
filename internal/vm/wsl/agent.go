@@ -36,8 +36,13 @@ var agentSHA256 = func() string {
 
 // agentCommand is the long-running session: it serves the engine API to the
 // host and keeps the distro running (WSL stops distros without a session).
-func (b *Backend) agentCommand() []string {
-	return b.inDistro(agentPath, "stdio", "--engine-socket", "/var/run/docker.sock", "--distro-root", b.distroRoot())
+func (b *Backend) agentCommand(distros []string) []string {
+	args := []string{agentPath, "stdio", "--engine-socket", "/var/run/docker.sock",
+		"--distro-root", b.distroRoot(), "--run-dir", b.runDir()}
+	for _, d := range distros {
+		args = append(args, "--distro", d)
+	}
+	return b.inDistro(args...)
 }
 
 // distroRoot is where other WSL distros' roots will be visible in the engine

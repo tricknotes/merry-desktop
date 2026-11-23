@@ -93,3 +93,22 @@ func TestRewriteLeavesUnrelatedBodiesAlone(t *testing.T) {
 		t.Error("want error for invalid JSON")
 	}
 }
+
+func TestDistroPaths(t *testing.T) {
+	tr := DistroPaths("/mnt/wsl/engine/distros/", "Ubuntu")
+	cases := map[string]string{
+		"/home/me/proj": "/mnt/wsl/engine/distros/Ubuntu/home/me/proj",
+		"/":             "/mnt/wsl/engine/distros/Ubuntu",
+		"/mnt/data/x":   "/mnt/wsl/engine/distros/Ubuntu/mnt/data/x",
+	}
+	for in, want := range cases {
+		if got, ok := tr(in); !ok || got != want {
+			t.Errorf("%q -> %q, %v; want %q", in, got, ok, want)
+		}
+	}
+	for _, unchanged := range []string{"/mnt/c/Users/me", "/mnt/d", "/mnt/wsl/shared/x", "volume"} {
+		if got, ok := tr(unchanged); ok {
+			t.Errorf("%q translated to %q", unchanged, got)
+		}
+	}
+}

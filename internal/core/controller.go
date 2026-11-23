@@ -151,6 +151,11 @@ func (c *Controller) Refresh(ctx context.Context) {
 	if c.Snapshot().Status != status {
 		c.setStatus(status, "")
 	}
+	if m, ok := c.backend.(vm.Maintainer); ok && status == vm.StatusRunning {
+		if err := m.Maintain(ctx); err != nil {
+			c.log.Warn("maintain", "err", err)
+		}
+	}
 }
 
 // LoadResources reads the configured resources from the backend, if it can.

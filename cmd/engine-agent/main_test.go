@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,5 +54,48 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 	}
 	if got := post("other"); !strings.Contains(got, `C:\\proj:/src`) {
 		t.Errorf("other client was rewritten: %s", got)
+	}
+}
+
+func TestServeDistroSocket(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "docker.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	received := make(chan string, 1)
+	engine := &httptest.Server{Listener: l, Config: &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		received <- string(b)
+	})}}
+	engine.Start()
+	defer engine.Close()
+
+	runDir := filepath.Join(dir, "run")
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	distroSock := filepath.Join(runDir, "Ubuntu", "docker.sock")
+	if fi, err := os.Stat(distroSock); err != nil || fi.Mode().Perm() != 0o666 {
+		t.Fatalf("socket %v, %v", fi, err)
+	}
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) {
+		return net.Dial("unix", distroSock)
+	}}}
+	resp, err := hc.Post("http://docker/containers/create", "application/json",
+		strings.NewReader(`{"HostConfig":{"Binds":["/home/me/proj:/src","/mnt/c/x:/c"]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	got := <-received
+	if !strings.Contains(got, `"/mnt/wsl/e/distros/Ubuntu/home/me/proj:/src"`) || !strings.Contains(got, `"/mnt/c/x:/c"`) {
+		t.Errorf("engine got %s", got)
+	}
+	if _, err := serveDistro(runDir, "../etc", sock, "", slog.New(slog.DiscardHandler)); err == nil {
+		t.Error("accepted a distro name with a path separator")
 	}
 }
