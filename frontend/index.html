@@ -13,12 +13,17 @@
       <form id="settings">
         <label>
           CPU数
-          <input id="cpus" name="cpus" type="number" min="1" step="1" required />
+          <input id="cpus" name="cpus" type="number" min="1" step="1" placeholder="既定" />
         </label>
         <label>
           メモリ(MiB)
-          <input id="memory" name="memory" type="number" min="1024" step="512" required />
+          <input id="memory" name="memory" type="number" min="1024" step="512" placeholder="既定" />
         </label>
+        <label>
+          ディスク上限(GiB)
+          <input id="disk" name="disk" type="number" min="16" step="1" placeholder="既定" />
+        </label>
+        <p class="hint">空欄は既定値(WSL が決める値)です。CPU数とメモリは、ほかの WSL ディストリにも反映されます。</p>
         <button type="submit">保存</button>
       </form>
       <p id="message" role="status"></p>

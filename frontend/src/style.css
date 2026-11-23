@@ -39,3 +39,10 @@ button {
 #status[data-status="starting"] { color: darkorange; }
 #status[data-status="running"] { color: green; }
 #status[data-status="error"] { color: crimson; }
+
+.hint,
+.detail {
+  font-size: 0.85rem;
+  margin: 0;
+  opacity: 0.8;
+}

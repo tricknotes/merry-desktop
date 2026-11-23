@@ -20,10 +20,34 @@ const (
 	StatusError    Status = "error"
 )
 
-// Resources is what the VM may use.
+// Resources is what the VM may use. Zero means "backend default".
 type Resources struct {
 	CPUs      int `json:"cpus"`
 	MemoryMiB int `json:"memoryMiB"`
+	// DiskGiB is the upper limit of the VM disk.
+	DiskGiB int `json:"diskGiB"`
+}
+
+// ResourcePlan says what applying new resources involves, so that the UI can
+// warn before saving.
+type ResourcePlan struct {
+	// RestartVM: the VM must restart for the change to take effect.
+	RestartVM bool `json:"restartVM"`
+	// RestartHost: the change applies to every VM of this kind on the machine
+	// (for WSL2: all distros of the user), and all of them must restart.
+	RestartHost bool `json:"restartHost"`
+}
+
+// ResourceManager is implemented by backends whose resource settings can be
+// read back and whose changes need a restart.
+type ResourceManager interface {
+	// CurrentResources returns the configured values (zero = backend default).
+	CurrentResources(ctx context.Context) (Resources, error)
+	// PlanResources describes what SetResources(r) would involve.
+	PlanResources(ctx context.Context, r Resources) (ResourcePlan, error)
+	// RestartHost restarts every VM of this kind (see ResourcePlan.RestartHost)
+	// and starts this VM again if it was running.
+	RestartHost(ctx context.Context) error
 }
 
 // ExecResult is the outcome of a command run inside the VM.
@@ -56,13 +80,20 @@ type Backend interface {
 	SetResources(ctx context.Context, resources Resources) error
 }
 
-// Validate checks values that every backend requires.
+// MinDiskGiB is the smallest disk limit accepted.
+const MinDiskGiB = 16
+
+// Validate checks values that every backend requires. Zero is always allowed
+// and means "backend default".
 func (r Resources) Validate() error {
-	if r.CPUs < 1 {
-		return errors.New("cpus must be >= 1")
+	if r.CPUs < 0 {
+		return errors.New("cpus must be 0 (default) or >= 1")
 	}
-	if r.MemoryMiB < 1024 {
-		return errors.New("memoryMiB must be >= 1024")
+	if r.MemoryMiB != 0 && r.MemoryMiB < 1024 {
+		return errors.New("memoryMiB must be 0 (default) or >= 1024")
+	}
+	if r.DiskGiB != 0 && r.DiskGiB < MinDiskGiB {
+		return errors.New("diskGiB must be 0 (default) or >= 16")
 	}
 	return nil
 }
