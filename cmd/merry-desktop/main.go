@@ -14,6 +14,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/tricknotes/merry-desktop/frontend"
 	"github.com/tricknotes/merry-desktop/internal/appinfo"
@@ -78,9 +79,10 @@ func main() {
 		}
 	})
 
+	notifier := notifications.New()
 	app = application.New(application.Options{
 		Name:     appinfo.DisplayName,
-		Services: []application.Service{application.NewService(service)},
+		Services: []application.Service{application.NewService(service), application.NewService(notifier)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(frontend.Dist),
 		},
@@ -143,6 +145,16 @@ func main() {
 	}
 	refreshTray(controller.Snapshot())
 	controller.OnChange(refreshTray)
+	// Notices (such as a slow bind mount) also reach docker compose users, who
+	// do not see the warnings the docker CLI prints.
+	controller.OnNotice(func(msg string) {
+		err := notifier.SendNotification(notifications.NotificationOptions{
+			ID: fmt.Sprintf("notice-%d", time.Now().UnixNano()), Title: appinfo.DisplayName, Body: msg,
+		})
+		if err != nil {
+			logger.Warn("notification", "err", err)
+		}
+	})
 
 	if enabled, err := app.Autostart.IsEnabled(); err == nil {
 		autostartItem.SetChecked(enabled)

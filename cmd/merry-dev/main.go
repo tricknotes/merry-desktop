@@ -196,6 +196,7 @@ func start(ctx context.Context, c *core.Controller, b *wsl.Backend) error {
 	if _, err := devSettings(ctx, c); err != nil {
 		return err
 	}
+	c.OnNotice(func(msg string) { fmt.Println("注意:", msg) })
 	t0 := time.Now()
 	c.Start(ctx)
 	s := c.Snapshot()

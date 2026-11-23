@@ -207,3 +207,10 @@ type ClientProxyConfigurer interface {
 	// user-facing line per place. Values the user wrote are never changed.
 	ConfigureClientProxy(ctx context.Context, p ClientProxy, enable bool) ([]string, error)
 }
+
+// Noticer is implemented by backends that report things the user should know
+// while the VM runs (for example a slow bind mount, I-09).
+type Noticer interface {
+	// OnNotice registers the single receiver of notices. It must not block.
+	OnNotice(func(message string))
+}

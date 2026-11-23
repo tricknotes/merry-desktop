@@ -16,6 +16,7 @@ import (
 const (
 	EventChanged = "vm:changed"  // data: core.Snapshot
 	EventSetup   = "setup:event" // data: core.SetupEvent
+	EventNotice  = "vm:notice"   // data: string
 )
 
 // Service exposes the controller and the settings to the windows. Every
@@ -31,6 +32,7 @@ type Service struct {
 func New(controller *core.Controller, store *settings.Store, emit func(name string, data any)) *Service {
 	s := &Service{Controller: controller, Settings: store, Emit: emit}
 	controller.OnChange(func(snap core.Snapshot) { s.emit(EventChanged, snap) })
+	controller.OnNotice(func(msg string) { s.emit(EventNotice, msg) })
 	return s
 }
 

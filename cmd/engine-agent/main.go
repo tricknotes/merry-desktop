@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/engineapi"
@@ -101,12 +102,13 @@ func serveStdio(args []string) error {
 
 	// Only the protocol may go to stdout; everything else goes to stderr.
 	session := mux.Server(stdio{Reader: os.Stdin, Writer: os.Stdout})
+	notify := noticeSender(session)
 	var servers []*http.Server
 	for _, d := range distros {
 		ensure := func(ctx context.Context) error {
 			return ensureMounted(ctx, session, filepath.Join(*distroRoot, d), d)
 		}
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, log)
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, env, ensure, notify, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -118,7 +120,31 @@ func serveStdio(args []string) error {
 			_ = s.Close()
 		}
 	}()
-	return serve(session, *socket, *distroRoot, env, log)
+	return serve(session, *socket, *distroRoot, env, notify, log)
+}
+
+// controlNotice is the stream metadata prefix of a notice for the user (a
+// warning the host shows, for example as a desktop notification).
+const controlNotice = "notice:"
+
+// noticeSender returns a function that sends each distinct notice to the host
+// once per agent run, so that repeated `docker compose up` does not repeat it.
+func noticeSender(session *mux.Session) func(string) {
+	var mu sync.Mutex
+	sent := map[string]bool{}
+	return func(msg string) {
+		mu.Lock()
+		dup := sent[msg]
+		sent[msg] = true
+		mu.Unlock()
+		if dup {
+			return
+		}
+		if st, err := session.Open([]byte(controlNotice + msg)); err == nil {
+			_ = st.CloseWrite()
+			_ = st.Close()
+		}
+	}
 }
 
 // ensureMounted makes sure the distro's root is bind-mounted at path. The bind
@@ -230,7 +256,7 @@ func containerProxyEnv(path string, log *slog.Logger) []string {
 // The socket is world-accessible on purpose: /mnt/wsl is reachable only from
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
-func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error, log *slog.Logger) (*http.Server, error) {
+func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensureMount func(context.Context) error, notify func(string), log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -251,6 +277,7 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 	srv := &http.Server{
 		Handler: engineapi.NewProxyWith(socket, engineapi.Options{
 			Translate: engineapi.DistroPaths(distroRoot, distro), Env: env, BeforeCreate: ensureMount,
+			WarnSlowBinds: true, Notify: notify,
 		}, log),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
@@ -260,8 +287,10 @@ func serveDistro(runDir, distro, socket, distroRoot string, env []string, ensure
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(session *mux.Session, socket, distroRoot string, env []string, log *slog.Logger) error {
-	windows := engineapi.NewProxyWith(socket, engineapi.Options{Translate: engineapi.WindowsPaths(distroRoot), Env: env}, log)
+func serve(session *mux.Session, socket, distroRoot string, env []string, notify func(string), log *slog.Logger) error {
+	windows := engineapi.NewProxyWith(socket, engineapi.Options{
+		Translate: engineapi.WindowsPaths(distroRoot), Env: env, WarnSlowBinds: true, Notify: notify,
+	}, log)
 	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: env}, log)
 
 	srv := &http.Server{

@@ -36,7 +36,7 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 
 	hostEnd, agentEnd := net.Pipe()
 	go func() {
-		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", nil, slog.New(slog.DiscardHandler))
+		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", nil, nil, slog.New(slog.DiscardHandler))
 	}()
 	session := mux.Client(hostEnd)
 	defer session.Close()
@@ -79,7 +79,7 @@ func TestServeDistroSocket(t *testing.T) {
 	runDir := filepath.Join(dir, "run")
 	ensured := 0
 	ensure := func(context.Context) error { ensured++; return nil }
-	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, ensure, slog.New(slog.DiscardHandler))
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", []string{"HTTP_PROXY=http://p:3128"}, ensure, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestServeDistroSocket(t *testing.T) {
 	if ensured != 1 {
 		t.Errorf("mount check ran %d times, want 1", ensured)
 	}
-	if _, err := serveDistro(runDir, "../etc", sock, "", nil, nil, slog.New(slog.DiscardHandler)); err == nil {
+	if _, err := serveDistro(runDir, "../etc", sock, "", nil, nil, nil, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("accepted a distro name with a path separator")
 	}
 }
@@ -164,5 +164,34 @@ func TestEnsureMountedAsksTheHost(t *testing.T) {
 	// The path is not a mount point here, so the host is asked.
 	if err := ensureMounted(context.Background(), agent, "/nonexistent/distros/Ubuntu", "Ubuntu"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNoticeSenderSendsEachNoticeOnce(t *testing.T) {
+	hostEnd, agentEnd := net.Pipe()
+	host, agent := mux.Client(hostEnd), mux.Server(agentEnd)
+	defer host.Close()
+	notify := noticeSender(agent)
+	got := make(chan string, 4)
+	go func() {
+		for {
+			st, err := host.Accept()
+			if err != nil {
+				return
+			}
+			got <- string(st.Meta())
+		}
+	}()
+	notify("C: is slow")
+	notify("C: is slow")
+	notify("D: is slow")
+	first, second := <-got, <-got
+	if first != controlNotice+"C: is slow" || second != controlNotice+"D: is slow" {
+		t.Fatalf("notices = %q, %q", first, second)
+	}
+	select {
+	case extra := <-got:
+		t.Fatalf("duplicate notice %q", extra)
+	default:
 	}
 }

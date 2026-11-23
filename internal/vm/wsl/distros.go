@@ -174,9 +174,21 @@ func (b *Backend) SetIntegrations(ctx context.Context, names []string) error {
 	return nil
 }
 
-// controlMount is the stream metadata the engine-agent uses to ask for a
-// distro's root to be bind-mounted again (see cmd/engine-agent).
-const controlMount = "mount:"
+// Stream metadata prefixes the engine-agent uses (see cmd/engine-agent):
+// a request to bind-mount a distro's root again, and a notice for the user.
+const (
+	controlMount  = "mount:"
+	controlNotice = "notice:"
+)
+
+var _ vm.Noticer = (*Backend)(nil)
+
+// OnNotice sets the receiver of the agent's notices.
+func (b *Backend) OnNotice(f func(message string)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.notice = f
+}
 
 // serveControl answers requests the agent opens on the session: when a docker
 // CLI in an integrated distro creates a container but the distro's root is not
@@ -190,8 +202,18 @@ func (b *Backend) serveControl(session *mux.Session) {
 		}
 		go func() {
 			defer st.Close()
+			meta := string(st.Meta())
+			if msg, ok := strings.CutPrefix(meta, controlNotice); ok {
+				b.mu.Lock()
+				notice := b.notice
+				b.mu.Unlock()
+				if notice != nil {
+					notice(msg)
+				}
+				return
+			}
 			reply := "error: unknown request"
-			if distro, ok := strings.CutPrefix(string(st.Meta()), controlMount); ok {
+			if distro, ok := strings.CutPrefix(meta, controlMount); ok {
 				reply = b.remount(distro)
 			}
 			_, _ = st.Write([]byte(reply + "\n"))

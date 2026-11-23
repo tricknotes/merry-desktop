@@ -269,3 +269,21 @@ func TestStartConnectsToAVMStartedElsewhere(t *testing.T) {
 		t.Fatalf("backend starts = %d after a second Start, want still 1", b.starts)
 	}
 }
+
+type noticing struct {
+	*stub.Backend
+	send func(string)
+}
+
+func (n *noticing) OnNotice(f func(string)) { n.send = f }
+
+func TestNoticesReachListeners(t *testing.T) {
+	b := &noticing{Backend: newStub()}
+	c := NewController(b, nil)
+	var got []string
+	c.OnNotice(func(m string) { got = append(got, m) })
+	b.send("slow bind")
+	if len(got) != 1 || got[0] != "slow bind" {
+		t.Fatalf("notices = %v", got)
+	}
+}

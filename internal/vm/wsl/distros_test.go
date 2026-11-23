@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIntegrationTargets(t *testing.T) {
@@ -82,5 +83,28 @@ func TestAgentCanAskForARemount(t *testing.T) {
 	}
 	if got := ask("something else"); !strings.HasPrefix(got, "error:") {
 		t.Errorf("unknown request = %q", got)
+	}
+}
+
+func TestAgentNoticesReachTheReceiver(t *testing.T) {
+	f := &fakeRunner{state: "Stopped"}
+	b := newTestBackend(t, f)
+	got := make(chan string, 1)
+	b.OnNotice(func(m string) { got <- m })
+	if err := b.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.agents[0].Open([]byte(controlNotice + "C: is slow"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	select {
+	case m := <-got:
+		if m != "C: is slow" {
+			t.Fatalf("notice = %q", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no notice")
 	}
 }
