@@ -19,6 +19,10 @@
       </ol>
       <button id="run" type="button">開始</button>
       <p id="result" role="status"></p>
+
+      <h2>VM の作り直し</h2>
+      <p class="hint">VM がおかしくなったときに、削除してから最初から作り直します。<strong>VM の中のイメージ、コンテナ、ボリュームはすべて消えます。</strong>リソースの設定とレジストリの一覧は残ります。</p>
+      <button id="recreate" type="button" class="danger">VM を作り直す</button>
     </main>
     <script type="module" src="/src/setup.ts"></script>
   </body>

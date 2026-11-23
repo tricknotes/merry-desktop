@@ -138,6 +138,9 @@ type Provisioner interface {
 	// Provision creates the VM with the container engine. progress receives
 	// short, user-facing lines; it must not block.
 	Provision(ctx context.Context, network Network, progress func(string)) error
+	// Destroy deletes the VM with everything in it (images, containers,
+	// volumes). Settings outside the VM are kept.
+	Destroy(ctx context.Context) error
 }
 
 // Maintainer is implemented by backends that need periodic upkeep while the VM

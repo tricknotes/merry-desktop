@@ -171,3 +171,27 @@ func keys(m map[string]string) []string {
 	}
 	return out
 }
+
+func TestDestroyResetsTheAppliedDiskLimit(t *testing.T) {
+	fx := newProvisionFixture(t)
+	if err := fx.backend.Provision(context.Background(), vm.Network{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := fx.backend.saveState(state{DiskGiB: 64, AppliedDiskGiB: 64}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fx.backend.Destroy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := fx.backend.Provisioned(context.Background()); ok {
+		t.Error("distro still registered")
+	}
+	s, _ := fx.backend.loadState()
+	if s.DiskGiB != 64 || s.AppliedDiskGiB != 0 {
+		t.Errorf("state = %+v, want the limit kept and marked as not applied", s)
+	}
+	// Destroying a VM that does not exist is fine.
+	if err := fx.backend.Destroy(context.Background()); err != nil {
+		t.Errorf("second Destroy: %v", err)
+	}
+}

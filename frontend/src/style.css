@@ -105,3 +105,7 @@ form.inline {
   padding: 4px 12px;
   background: color-mix(in srgb, currentColor 10%, transparent);
 }
+
+button.danger {
+  color: crimson;
+}

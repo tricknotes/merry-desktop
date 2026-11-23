@@ -52,9 +52,7 @@ func (c *Controller) Setup(ctx context.Context, emit func(SetupEvent)) error {
 	if !ok {
 		return vm.ErrNotSupported
 	}
-	if !c.begin() {
-		return errors.New("別の操作の実行中です。終わってからもう一度試してください")
-	}
+	c.begin()
 	defer c.end()
 
 	fail := func(step vm.SetupStep, err error) error {
@@ -117,6 +115,32 @@ func (c *Controller) Setup(ctx context.Context, emit func(SetupEvent)) error {
 		emit(SetupEvent{Step: vm.StepHostCLI, State: SetupDone, Message: "新しいターミナルで docker と docker compose を使えます"})
 	}
 	return nil
+}
+
+// Recreate deletes the VM with everything in it and runs the setup again. The
+// UI must confirm with the user first: images, containers and volumes are lost.
+func (c *Controller) Recreate(ctx context.Context, emit func(SetupEvent)) error {
+	if emit == nil {
+		emit = func(SetupEvent) {}
+	}
+	p, ok := c.backend.(vm.Provisioner)
+	if !ok {
+		return vm.ErrNotSupported
+	}
+	c.begin()
+	emit(SetupEvent{Step: vm.StepCreate, State: SetupRunning, Message: "いまの VM を削除しています"})
+	err := p.Destroy(ctx)
+	if err == nil {
+		c.setStatus(vm.StatusStopped, "")
+	}
+	c.end()
+	if err != nil {
+		c.log.Error("destroy failed", "err", err)
+		emit(SetupEvent{Step: vm.StepCreate, State: SetupFailed, Message: setupMessage(err)})
+		return err
+	}
+	c.log.Info("VM destroyed for recreation")
+	return c.Setup(ctx, emit)
 }
 
 func describeNetwork(n vm.Network) string {
