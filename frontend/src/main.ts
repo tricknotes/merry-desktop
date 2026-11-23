@@ -1,4 +1,5 @@
 import { bridge } from "./bridge";
+import { initRegistries } from "./registry";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
 
@@ -71,6 +72,7 @@ async function init(): Promise<void> {
   const snapshot = await bridge.getSnapshot();
   show(snapshot);
   fill(snapshot.resources);
+  await initRegistries();
 }
 
 void init();

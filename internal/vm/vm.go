@@ -151,3 +151,9 @@ type Maintainer interface {
 type HostIntegrator interface {
 	IntegrateHost(ctx context.Context, network Network, progress func(string)) error
 }
+
+// RegistryLogin is implemented by backends that can sign the host CLI in to a
+// registry, keeping the credentials in the OS credential store (F-12).
+type RegistryLogin interface {
+	Login(ctx context.Context, server, username, password string) error
+}

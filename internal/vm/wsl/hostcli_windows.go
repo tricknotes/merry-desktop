@@ -62,10 +62,13 @@ func broadcastEnvironmentChange() {
 	_, _, _ = proc.Call(hwndBroadcast, wmSettingChange, 0, uintptr(unsafe.Pointer(env)), smtoAbortIfHung, 5000, uintptr(unsafe.Pointer(&result)))
 }
 
-func runHostCommand(ctx context.Context, name string, args ...string) (string, error) {
+func runHostCommand(ctx context.Context, stdin []byte, name string, args ...string) (string, error) {
 	var out, errOut bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout, cmd.Stderr = &out, &errOut
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	hideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return out.String(), fmt.Errorf("%s %v: %w: %s", name, args, err, errOut.String())

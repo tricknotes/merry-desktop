@@ -35,6 +35,7 @@ Go 標準ライブラリ(BSD-3-Clause)と、このリポジトリのコードだ
 | Docker Compose(Linux) | v5.8.0 | Apache-2.0 | VM |
 | docker CLI(Windows、`download.docker.com` の静的バイナリ) | 29.10.0 | Apache-2.0 | `%LOCALAPPDATA%\<VM名>\bin\docker.exe` |
 | Docker Compose(Windows) | v5.8.0 | Apache-2.0 | `%USERPROFILE%\.docker\cli-plugins\docker-compose.exe`(なければ) |
+| docker-credential-wincred(docker/docker-credential-helpers) | v0.9.13 | MIT | `%LOCALAPPDATA%\<VM名>\bin`(F-12) |
 
 どれも Docker Desktop のものではない。
 

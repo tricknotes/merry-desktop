@@ -122,3 +122,55 @@ func TestIntegrateHostRejectsTamperedDownload(t *testing.T) {
 		t.Error("installed a file with a wrong checksum")
 	}
 }
+
+func TestLoginPassesThePasswordOnStdin(t *testing.T) {
+	b := newTestBackend(t, &fakeRunner{})
+	dir := t.TempDir()
+	b.HostCLI.BinDir = dir
+	var gotStdin, gotArgs string
+	b.HostCLI.Command = func(_ context.Context, stdin []byte, name string, args ...string) (string, error) {
+		gotStdin, gotArgs = string(stdin), name+" "+strings.Join(args, " ")
+		return "Login Succeeded", nil
+	}
+	if err := b.Login(context.Background(), "harbor.corp", "alice", "s3cret"); err == nil {
+		t.Fatal("logged in without an installed CLI")
+	}
+	_ = os.WriteFile(filepath.Join(dir, "docker.exe"), []byte("cli"), 0o755)
+	if err := b.Login(context.Background(), "harbor.corp", "alice", "s3cret"); err != nil {
+		t.Fatal(err)
+	}
+	if gotStdin != "s3cret" || strings.Contains(gotArgs, "s3cret") || !strings.HasSuffix(gotArgs, "login harbor.corp --username alice --password-stdin") {
+		t.Errorf("stdin %q, args %q", gotStdin, gotArgs)
+	}
+}
+
+func TestIntegrateHostInstallsCredentialHelper(t *testing.T) {
+	zipData := zipWith(t, map[string]string{"docker/docker.exe": "cli"})
+	helper := []byte("wincred")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/docker.zip":
+			_, _ = w.Write(zipData)
+		case "/helper.exe":
+			_, _ = w.Write(helper)
+		default:
+			_, _ = w.Write([]byte("compose"))
+		}
+	}))
+	defer srv.Close()
+	b := newTestBackend(t, &fakeRunner{})
+	dir := t.TempDir()
+	b.HTTPClient = srv.Client()
+	b.HostCLI = hostCLI{
+		BinDir: filepath.Join(dir, "bin"), PluginsDir: filepath.Join(dir, "plugins"),
+		DockerURL: srv.URL + "/docker.zip", DockerSHA256: sha(zipData),
+		ComposeURL: srv.URL + "/c.exe", ComposeSHA256: sha([]byte("compose")),
+		CredURL: srv.URL + "/helper.exe", CredSHA256: sha(helper),
+	}
+	if err := b.IntegrateHost(context.Background(), vm.Network{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "bin", "docker-credential-wincred.exe")); string(got) != "wincred" {
+		t.Errorf("helper = %q", got)
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/tricknotes/merry-desktop/frontend"
 	"github.com/tricknotes/merry-desktop/internal/appinfo"
 	"github.com/tricknotes/merry-desktop/internal/core"
+	"github.com/tricknotes/merry-desktop/internal/settings"
 	"github.com/tricknotes/merry-desktop/internal/ui/icons"
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
@@ -48,7 +51,42 @@ const autostartArg = "--autostart"
 // VMService is bound to the settings and setup windows.
 type VMService struct {
 	controller *core.Controller
+	settings   *settings.Store
 	emit       func(name string, data any)
+}
+
+// Registries lists the registries offered for login (F-12).
+func (s *VMService) Registries() ([]string, error) {
+	cur, err := s.settings.Load()
+	return cur.Registries, err
+}
+
+// AddRegistry remembers a registry (host[:port]) and returns the new list.
+func (s *VMService) AddRegistry(server string) ([]string, error) {
+	server, err := core.NormalizeRegistry(server)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.settings.Update(func(v *settings.Settings) {
+		if !slices.Contains(v.Registries, server) {
+			v.Registries = append(v.Registries, server)
+		}
+	})
+	return cur.Registries, err
+}
+
+// RemoveRegistry forgets a registry. Its stored login is not deleted.
+func (s *VMService) RemoveRegistry(server string) ([]string, error) {
+	cur, err := s.settings.Update(func(v *settings.Settings) {
+		v.Registries = slices.DeleteFunc(v.Registries, func(r string) bool { return r == server })
+	})
+	return cur.Registries, err
+}
+
+// Login signs the host docker CLI in to a registry. The password is passed
+// through to `docker login --password-stdin` and not kept by the app.
+func (s *VMService) Login(server, username, password string) error {
+	return s.controller.Login(context.Background(), server, username, password)
 }
 
 // RunSetup runs the setup wizard (F-10) and reports progress as "setup:event".
@@ -82,7 +120,14 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	controller := core.NewController(newBackend(), logger)
-	service := &VMService{controller: controller}
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	service := &VMService{
+		controller: controller,
+		settings:   &settings.Store{Path: filepath.Join(configDir, appinfo.ID, "settings.json")},
+	}
 
 	app := application.New(application.Options{
 		Name:     appinfo.DisplayName,
@@ -98,7 +143,7 @@ func main() {
 	service.emit = func(name string, data any) { app.Event.Emit(name, data) }
 
 	openSettings := singleWindow(app, application.WebviewWindowOptions{
-		Name: "settings", Title: appinfo.DisplayName + " - 設定", Width: 380, Height: 480, URL: "/",
+		Name: "settings", Title: appinfo.DisplayName + " - 設定", Width: 420, Height: 720, URL: "/",
 	})
 	openSetup := singleWindow(app, application.WebviewWindowOptions{
 		Name: "setup", Title: appinfo.DisplayName + " - セットアップ", Width: 480, Height: 560, URL: "/setup.html",
