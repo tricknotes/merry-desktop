@@ -1,6 +1,4 @@
-import { Call } from "@wailsio/runtime";
-
-const SERVICE = "main.VMService";
+import { call } from "./native";
 
 const listEl = document.querySelector<HTMLUListElement>("#registries")!;
 const addForm = document.querySelector<HTMLFormElement>("#add-registry")!;
@@ -33,7 +31,7 @@ function render(registries: string[]): void {
       remove.type = "button";
       remove.textContent = "削除";
       remove.addEventListener("click", async () => {
-        render((await Call.ByName(`${SERVICE}.RemoveRegistry`, server)) as string[]);
+        render(await call<string[]>("RemoveRegistry", server));
       });
       item.append(name, login, remove);
       return item;
@@ -45,7 +43,7 @@ addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   messageEl.textContent = "";
   try {
-    render((await Call.ByName(`${SERVICE}.AddRegistry`, registryEl.value)) as string[]);
+    render(await call<string[]>("AddRegistry", registryEl.value));
     registryEl.value = "";
   } catch (error) {
     messageEl.textContent = String(error);
@@ -56,7 +54,7 @@ loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   messageEl.textContent = "ログインしています…";
   try {
-    await Call.ByName(`${SERVICE}.Login`, selected, usernameEl.value, passwordEl.value);
+    await call("Login", selected, usernameEl.value, passwordEl.value);
     messageEl.textContent = `${selected} にログインしました`;
     loginForm.hidden = true;
   } catch (error) {
@@ -68,5 +66,5 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 export async function initRegistries(): Promise<void> {
-  render(((await Call.ByName(`${SERVICE}.Registries`)) as string[] | null) ?? []);
+  render((await call<string[] | null>("Registries")) ?? []);
 }

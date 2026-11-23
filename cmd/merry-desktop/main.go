@@ -3,14 +3,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -20,6 +18,7 @@ import (
 	"github.com/tricknotes/merry-desktop/frontend"
 	"github.com/tricknotes/merry-desktop/internal/appinfo"
 	"github.com/tricknotes/merry-desktop/internal/applog"
+	"github.com/tricknotes/merry-desktop/internal/appservice"
 	"github.com/tricknotes/merry-desktop/internal/core"
 	"github.com/tricknotes/merry-desktop/internal/settings"
 	"github.com/tricknotes/merry-desktop/internal/ui/icons"
@@ -50,72 +49,6 @@ func engineName() string {
 // the VM, so that `docker` works right after login without opening the tray.
 const autostartArg = "--autostart"
 
-// VMService is bound to the settings and setup windows.
-type VMService struct {
-	controller *core.Controller
-	settings   *settings.Store
-	emit       func(name string, data any)
-}
-
-// Registries lists the registries offered for login (F-12).
-func (s *VMService) Registries() ([]string, error) {
-	cur, err := s.settings.Load()
-	return cur.Registries, err
-}
-
-// AddRegistry remembers a registry (host[:port]) and returns the new list.
-func (s *VMService) AddRegistry(server string) ([]string, error) {
-	server, err := core.NormalizeRegistry(server)
-	if err != nil {
-		return nil, err
-	}
-	cur, err := s.settings.Update(func(v *settings.Settings) {
-		if !slices.Contains(v.Registries, server) {
-			v.Registries = append(v.Registries, server)
-		}
-	})
-	return cur.Registries, err
-}
-
-// RemoveRegistry forgets a registry. Its stored login is not deleted.
-func (s *VMService) RemoveRegistry(server string) ([]string, error) {
-	cur, err := s.settings.Update(func(v *settings.Settings) {
-		v.Registries = slices.DeleteFunc(v.Registries, func(r string) bool { return r == server })
-	})
-	return cur.Registries, err
-}
-
-// Login signs the host docker CLI in to a registry. The password is passed
-// through to `docker login --password-stdin` and not kept by the app.
-func (s *VMService) Login(server, username, password string) error {
-	return s.controller.Login(context.Background(), server, username, password)
-}
-
-// RunSetup runs the setup wizard (F-10) and reports progress as "setup:event".
-func (s *VMService) RunSetup() error {
-	return s.controller.Setup(context.Background(), func(e core.SetupEvent) {
-		s.emit("setup:event", e)
-	})
-}
-
-func (s *VMService) GetSnapshot() core.Snapshot {
-	return s.controller.Snapshot()
-}
-
-// PlanResources tells the settings window what saving would involve (F-03).
-func (s *VMService) PlanResources(resources vm.Resources) (vm.ResourcePlan, error) {
-	return s.controller.PlanResources(context.Background(), resources)
-}
-
-// ApplyResources saves the resources and, with restartNow, restarts what is needed.
-func (s *VMService) ApplyResources(resources vm.Resources, restartNow bool) error {
-	err := s.controller.ApplyResources(context.Background(), resources, restartNow)
-	if errors.Is(err, vm.ErrNotSupported) {
-		return errors.New("この環境では、まだ変更できません")
-	}
-	return err
-}
-
 func main() {
 	launchedAtLogin := flag.Bool(autostartArg[2:], false, "launched at user login; also start the VM")
 	flag.Parse()
@@ -137,12 +70,15 @@ func main() {
 		defer logFile.Close()
 	}
 	controller := core.NewController(newBackend(), logger)
-	service := &VMService{
-		controller: controller,
-		settings:   &settings.Store{Path: filepath.Join(configDir, appinfo.ID, "settings.json")},
-	}
+	store := &settings.Store{Path: filepath.Join(configDir, appinfo.ID, "settings.json")}
+	var app *application.App
+	service := appservice.New(controller, store, func(name string, data any) {
+		if app != nil {
+			app.Event.Emit(name, data)
+		}
+	})
 
-	app := application.New(application.Options{
+	app = application.New(application.Options{
 		Name:     appinfo.DisplayName,
 		Services: []application.Service{application.NewService(service)},
 		Assets: application.AssetOptions{
@@ -152,8 +88,6 @@ func main() {
 		Windows: application.WindowsOptions{DisableQuitOnLastWindowClosed: true},
 		Linux:   application.LinuxOptions{DisableQuitOnLastWindowClosed: true},
 	})
-
-	service.emit = func(name string, data any) { app.Event.Emit(name, data) }
 
 	openSettings := singleWindow(app, application.WebviewWindowOptions{
 		Name: "settings", Title: appinfo.DisplayName + " - 設定", Width: 420, Height: 720, URL: "/",
@@ -208,10 +142,7 @@ func main() {
 		menu.Update()
 	}
 	refreshTray(controller.Snapshot())
-	controller.OnChange(func(s core.Snapshot) {
-		refreshTray(s)
-		app.Event.Emit("vm:changed", s)
-	})
+	controller.OnChange(refreshTray)
 
 	if enabled, err := app.Autostart.IsEnabled(); err == nil {
 		autostartItem.SetChecked(enabled)
@@ -294,12 +225,12 @@ func backgroundLoop(controller *core.Controller, logger *slog.Logger, openSetup 
 
 // writeDiagnostics writes the diagnostic report (F-14) to the Downloads folder
 // and shows it in the file manager.
-func writeDiagnostics(app *application.App, controller *core.Controller, service *VMService, logDir string, logger *slog.Logger) {
+func writeDiagnostics(app *application.App, controller *core.Controller, service *appservice.Service, logDir string, logger *slog.Logger) {
 	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, "Downloads", fmt.Sprintf("%s-diagnostics-%s.zip", appinfo.ID, time.Now().Format("20060102-150405")))
 	registries, _ := service.Registries()
 	err := controller.WriteDiagnostics(context.Background(), path, core.DiagnosticsInput{
-		AppLogDir: logDir, SettingsPath: service.settings.Path, Registries: registries,
+		AppLogDir: logDir, SettingsPath: service.Settings.Path, Registries: registries,
 	})
 	if err != nil {
 		logger.Error("diagnostics", "err", err)

@@ -93,3 +93,15 @@ form.inline {
   gap: 8px;
   max-width: none;
 }
+
+.controls {
+  display: flex;
+  gap: 8px;
+}
+
+.dev-nav {
+  font-size: 0.8rem;
+  margin: -8px -12px 12px;
+  padding: 4px 12px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}

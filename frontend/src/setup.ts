@@ -1,4 +1,4 @@
-import { Call, Events } from "@wailsio/runtime";
+import { call, on, showDevNav } from "./native";
 import "./style.css";
 
 type SetupState = "running" | "done" | "skipped" | "failed";
@@ -35,14 +35,15 @@ function reset(): void {
   });
 }
 
-Events.On("setup:event", (event) => show(event.data as SetupEvent));
+showDevNav();
+on("setup:event", (data) => show(data as SetupEvent));
 
 runButton.addEventListener("click", async () => {
   runButton.disabled = true;
   resultEl.textContent = "";
   reset();
   try {
-    await Call.ByName("main.VMService.RunSetup");
+    await call("RunSetup");
     resultEl.textContent = "セットアップが完了しました。ターミナルから docker を使えます。";
     runButton.textContent = "もう一度実行";
   } catch (error) {

@@ -37,6 +37,8 @@ docker compose run --rm builder make build  # ビルドだけ
 | `internal/diag/` | 診断レポートの zip と、秘密情報の除去 |
 | `internal/settings/`、`internal/applog/` | アプリの設定(JSON)とログファイル |
 | `internal/appinfo/` | アプリ名などの名前。アプリ名が決まったら、ここだけを変える |
+| `internal/appservice/` | 画面から呼ぶメソッド。アプリ(Wails)と開発用 UI(HTTP)で共通 |
+| `internal/devui/` | 開発用 UI の HTTP サーバー(`merry-dev ui`) |
 | `frontend/` | 設定ウィンドウとセットアップウィンドウ(Vite + TypeScript) |
 
 ## 機能と実装の対応
@@ -85,6 +87,7 @@ docker --context merry-dev-engine ps   # start の間、このディストリの
 ./bin/merry-dev resources [-cpus N] [-memory MiB] [-disk GiB] [-restart]
 ./bin/merry-dev diagnostics [-o report.zip]
 ./bin/merry-dev stop
+./bin/merry-dev ui            # 設定画面とセットアップ画面を Windows のブラウザで開く
 ./bin/merry-dev unregister -yes   # VM を中身ごと消す
 ```
 
@@ -94,9 +97,21 @@ docker --context merry-dev-engine ps   # start の間、このディストリの
 - `.wslconfig` と VM のディスクは、Windows のユーザーフォルダ(`%USERPROFILE%`、`%LOCALAPPDATA%`)に置く。
 - `resources -restart` で CPU とメモリを反映すると、WSL 全体が再起動する(ほかのディストリも止まる)。
 
+### 画面の確認(merry-dev ui)
+
+`merry-dev ui` は、アプリと同じ画面(`frontend/`)を `127.0.0.1:18765` で配信し、Windows のブラウザで開く
+(WSL が localhost を Windows に転送する)。画面の操作は、本物のコアと VM に届く。
+
+- 画面からの呼び出しは `frontend/src/native.ts` に集めてある。アプリでは Wails の呼び出し、
+  `merry-dev ui` では HTTP(`internal/devui`)を使う。Go 側はどちらも `internal/appservice.Service`。
+- 待ち受けはループバックだけ。API には URL のランダムなトークンと、ループバックの Host ヘッダーが要る
+  (ほかのプロセスや、ブラウザで開いたほかのサイトからは操作できない)。
+- トレイはない。代わりに設定画面の「起動」「停止」「再起動」と、上部のリンク(設定 / セットアップ)を使う。
+- `-open=false` でブラウザを開かない。`-addr` で待ち受けを変えられる。
+
 扱えないもの(Windows でしか動かないもの):
 
-- トレイと画面
+- トレイ(画面は `merry-dev ui` で確認できる)
 - 名前付きパイプ(Windows の docker CLI からの接続)
 - Windows の docker CLI、PATH、`docker login`(セットアップの「ターミナルの設定」は飛ばす)
 - Windows の信頼されたルート証明書の取り込み(WSL の中からは読めない)

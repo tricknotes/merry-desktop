@@ -38,7 +38,7 @@ build: frontend agent dev
 		-o bin/$(APP).exe ./cmd/$(APP)
 
 # The development CLI runs inside WSL (Linux) and drives the VM through wsl.exe.
-dev: agent
+dev: agent frontend
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o bin/merry-dev ./cmd/merry-dev
 
 tidy: agent
