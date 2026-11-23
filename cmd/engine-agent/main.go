@@ -77,12 +77,22 @@ func serveStdio(args []string) error {
 	distroRoot := fs.String("distro-root", "", "where other WSL distros' roots are bind-mounted")
 	runDir := fs.String("run-dir", "", "directory for the per-distro sockets (under /mnt/wsl)")
 	proxyEnv := fs.String("proxy-env", "", "file with the proxy settings (export KEY=VALUE) to pass to new containers")
+	logFile := fs.String("log-file", "", "append logs to this file instead of stderr (the host discards stderr)")
 	var distros names
 	fs.Var(&distros, "distro", "serve a socket for this WSL distro (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	var logOut io.Writer = os.Stderr
+	if *logFile != "" {
+		f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		logOut = f
+	}
+	log := slog.New(slog.NewTextHandler(logOut, nil))
 	log.Info("engine-agent serving", "version", version, "socket", *socket, "distros", distros.String())
 	env := containerProxyEnv(*proxyEnv, log)
 
