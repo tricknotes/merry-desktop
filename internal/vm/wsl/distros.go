@@ -182,6 +182,7 @@ const (
 	controlMount  = "mount:"
 	controlNotice = "notice:"
 	controlPorts  = "ports:" // JSON []engineapi.PortRequest; reply: JSON []string warnings
+	controlIdle   = "idle:"  // "asleep" or "awake" (F-06)
 )
 
 var _ vm.Noticer = (*Backend)(nil)
@@ -213,6 +214,10 @@ func (b *Backend) serveControl(session *mux.Session) {
 				if notice != nil {
 					notice(msg)
 				}
+				return
+			}
+			if state, ok := strings.CutPrefix(meta, controlIdle); ok {
+				b.setAsleep(state == "asleep")
 				return
 			}
 			if raw, ok := strings.CutPrefix(meta, controlPorts); ok {

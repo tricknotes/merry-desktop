@@ -44,6 +44,9 @@ func (c *Controller) ProjectUsage(ctx context.Context) (Usage, error) {
 	if c.Snapshot().Status != vm.StatusRunning {
 		return Usage{}, vm.ErrNotRunning
 	}
+	if c.sleeping() {
+		return Usage{}, nil // no container runs; reading would start the engine
+	}
 	res, err := c.backend.Exec(ctx, usageScript)
 	if err != nil {
 		return Usage{}, err
@@ -152,7 +155,7 @@ const (
 // CheckMemory notifies the user when the containers use most of the VM
 // memory, naming the project that uses the most. Call it periodically.
 func (c *Controller) CheckMemory(ctx context.Context) {
-	if c.Snapshot().Status != vm.StatusRunning {
+	if c.Snapshot().Status != vm.StatusRunning || c.sleeping() {
 		return
 	}
 	u, err := c.ProjectUsage(ctx)

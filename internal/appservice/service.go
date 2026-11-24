@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/core"
 	"github.com/tricknotes/merry-desktop/internal/settings"
@@ -134,6 +135,25 @@ func (s *Service) SetContainerCA(enable bool) error {
 		return err
 	}
 	_, err := s.Settings.Update(func(v *settings.Settings) { v.ContainerCA = enable })
+	return err
+}
+
+// IdleStopMinutes reports how many idle minutes stop the engine (F-06); 0
+// means never.
+func (s *Service) IdleStopMinutes() (int, error) {
+	cur, err := s.Settings.Load()
+	return int(cur.IdleStop() / time.Minute), err
+}
+
+// SetIdleStopMinutes changes it; it applies right away.
+func (s *Service) SetIdleStopMinutes(minutes int) error {
+	if minutes < 0 || minutes > 24*60 {
+		return errors.New("0 から 1440 までの分数を指定してください")
+	}
+	if err := s.Controller.SetIdleStop(context.Background(), time.Duration(minutes)*time.Minute); err != nil {
+		return err
+	}
+	_, err := s.Settings.Update(func(v *settings.Settings) { v.IdleStopMinutes = &minutes })
 	return err
 }
 

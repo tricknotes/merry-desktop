@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
@@ -44,4 +45,14 @@ func (c *Controller) ApplySavedIntegrations(ctx context.Context, saved *[]string
 		return nil
 	}
 	return c.SetIntegrations(ctx, *saved)
+}
+
+// SetIdleStop sets how long the engine may be idle before it is stopped; 0
+// never stops it (F-06).
+func (c *Controller) SetIdleStop(ctx context.Context, after time.Duration) error {
+	i, ok := c.backend.(vm.IdleStopper)
+	if !ok {
+		return vm.ErrNotSupported
+	}
+	return i.SetIdleStop(ctx, after)
 }

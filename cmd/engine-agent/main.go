@@ -84,6 +84,7 @@ func serveStdio(args []string) error {
 	proxyEnv := fs.String("proxy-env", "", "file with the proxy settings (export KEY=VALUE) to pass to new containers")
 	caBundle := fs.String("ca-bundle", "", "CA bundle to mount into new containers (F-11)")
 	logFile := fs.String("log-file", "", "append logs to this file instead of stderr (the host discards stderr)")
+	idleAfter := fs.Duration("idle-stop", 0, "stop the engine after this long without containers and requests; 0 never stops it (F-06)")
 	var distros names
 	fs.Var(&distros, "distro", "serve a socket for this WSL distro (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -109,12 +110,23 @@ func serveStdio(args []string) error {
 		Env: env, CABundle: *caBundle, WarnSlowBinds: true,
 		CheckPorts: portChecker(session), Notify: noticeSender(session),
 	}
+	var idle *idleStop
+	if *idleAfter > 0 {
+		idle = newIdleStop(*idleAfter, log)
+		idle.start = func(ctx context.Context) error { return startEngine(ctx, *socket) }
+		idle.stop = func(ctx context.Context) error { return stopEngine(ctx, enginePidFile) }
+		idle.runningContainers = func(ctx context.Context) (int, error) { return countRunning(ctx, *socket) }
+		idle.notify = idleNotifier(session)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go idle.run(ctx)
+	}
 	var servers []*http.Server
 	for _, d := range distros {
 		ensure := func(ctx context.Context) error {
 			return ensureMounted(ctx, session, filepath.Join(*distroRoot, d), d)
 		}
-		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, base, ensure, log)
+		srv, err := serveDistro(*runDir, d, *socket, *distroRoot, base, ensure, idle, log)
 		if err != nil {
 			log.Error("distro socket", "distro", d, "err", err)
 			continue
@@ -126,7 +138,24 @@ func serveStdio(args []string) error {
 			_ = s.Close()
 		}
 	}()
-	return serve(session, *socket, *distroRoot, base, log)
+	return serve(session, *socket, *distroRoot, base, idle, log)
+}
+
+// controlIdle tells the host that the engine was stopped for being idle
+// ("idle:asleep") or started again ("idle:awake").
+const controlIdle = "idle:"
+
+func idleNotifier(session *mux.Session) func(bool) {
+	return func(asleep bool) {
+		state := "awake"
+		if asleep {
+			state = "asleep"
+		}
+		if st, err := session.Open([]byte(controlIdle + state)); err == nil {
+			_ = st.CloseWrite()
+			_ = st.Close()
+		}
+	}
 }
 
 // controlPorts asks the host which published ports are already taken there;
@@ -289,7 +318,7 @@ func containerProxyEnv(path string, log *slog.Logger) []string {
 // this Windows user's WSL distros, which can run as root in the VM anyway
 // (docs/phase0-wsl2-backend.md, finding 4).
 func serveDistro(runDir, distro, socket, distroRoot string, base engineapi.Options,
-	ensureMount func(context.Context) error, log *slog.Logger) (*http.Server, error) {
+	ensureMount func(context.Context) error, idle *idleStop, log *slog.Logger) (*http.Server, error) {
 	if runDir == "" || distro == "" || strings.ContainsAny(distro, "/\\") {
 		return nil, fmt.Errorf("invalid run dir or distro name %q", distro)
 	}
@@ -311,7 +340,7 @@ func serveDistro(runDir, distro, socket, distroRoot string, base engineapi.Optio
 	opts.Translate = engineapi.DistroPaths(distroRoot, distro)
 	opts.BeforeCreate = ensureMount
 	srv := &http.Server{
-		Handler:  engineapi.NewProxyWith(socket, opts, log),
+		Handler:  idle.wrap(engineapi.NewProxyWith(socket, opts, log)),
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() { _ = srv.Serve(l) }()
@@ -320,20 +349,20 @@ func serveDistro(runDir, distro, socket, distroRoot string, base engineapi.Optio
 
 // serve relays engine API requests arriving as mux streams on conn until the
 // host closes the session.
-func serve(session *mux.Session, socket, distroRoot string, base engineapi.Options, log *slog.Logger) error {
+func serve(session *mux.Session, socket, distroRoot string, base engineapi.Options, idle *idleStop, log *slog.Logger) error {
 	opts := base
 	opts.Translate = engineapi.WindowsPaths(distroRoot)
 	windows := engineapi.NewProxyWith(socket, opts, log)
 	plain := engineapi.NewProxyWith(socket, engineapi.Options{Env: base.Env, CABundle: base.CABundle}, log)
 
 	srv := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Handler: idle.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if st, _ := r.Context().Value(streamKey{}).(*mux.Stream); st != nil && string(st.Meta()) == metaWindows {
 				windows.ServeHTTP(w, r)
 				return
 			}
 			plain.ServeHTTP(w, r)
-		}),
+		})),
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			if st, ok := c.(*mux.Stream); ok {
 				return context.WithValue(ctx, streamKey{}, st)

@@ -51,6 +51,9 @@ type Backend struct {
 	// ContainerCA gives new containers the VM's CA bundle (F-11). Set it with
 	// SetContainerCA while the VM runs.
 	ContainerCA bool
+	// IdleStop is how long the engine may be idle before the agent stops it
+	// (F-06); 0 never stops it. Set it with SetIdleStop while the VM runs.
+	IdleStop time.Duration
 
 	// appliedNetwork is the fingerprint of the network settings last applied
 	// to or found in the VM (C-2). Guarded by mu.
@@ -76,6 +79,8 @@ type Backend struct {
 	keepalive   StdioProcess    // the engine-agent session (see agent.go)
 	session     *mux.Session
 	endpoint    *endpoint // where the host docker CLI connects (Windows: a named pipe)
+	asleep      bool      // the agent stopped the idle engine (F-06)
+	onIdle      func(asleep bool)
 }
 
 var _ vm.Backend = (*Backend)(nil)
@@ -123,6 +128,7 @@ func (b *Backend) lookup(ctx context.Context) (distro, error) {
 // endSession closes the host endpoint and the agent session.
 func (b *Backend) endSession() error {
 	b.stopEndpoint()
+	b.setAsleep(false)
 	b.mu.Lock()
 	p, s := b.keepalive, b.session
 	b.keepalive, b.session = nil, nil
@@ -193,6 +199,13 @@ func (b *Backend) Start(ctx context.Context) error {
 	b.mu.Lock()
 	running := b.keepaliveRunning()
 	b.mu.Unlock()
+	if !running && d.State == stateRunning && !b.engineReady(ctx) {
+		// The distro runs without the engine: a previous agent stopped it for
+		// being idle (F-06). The boot command will not run again; start it.
+		if err := b.mustRun(ctx, RunOptions{}, b.inDistro(engineStart)...); err != nil {
+			return fmt.Errorf("start the engine: %w", err)
+		}
+	}
 	if !running {
 		// Running a command boots the distro; its [boot] command starts dockerd.
 		if err := b.ensureAgent(ctx); err != nil {
@@ -259,6 +272,12 @@ func (b *Backend) Exec(ctx context.Context, args []string) (vm.ExecResult, error
 	if d.State != stateRunning {
 		return vm.ExecResult{}, vm.ErrNotRunning
 	}
+	if b.isAsleep() {
+		// The command may use the engine; start it like a client request does.
+		if err := b.wake(ctx); err != nil {
+			return vm.ExecResult{}, err
+		}
+	}
 	res, err := b.Runner.Run(ctx, b.inDistro(args...)...)
 	if err != nil {
 		return vm.ExecResult{}, err
@@ -273,7 +292,7 @@ func (b *Backend) Status(ctx context.Context) (vm.Status, error) {
 	}
 	switch d.State {
 	case stateRunning:
-		if b.engineReady(ctx) {
+		if b.isAsleep() || b.engineReady(ctx) {
 			return vm.StatusRunning, nil
 		}
 		return vm.StatusStarting, nil

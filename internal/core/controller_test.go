@@ -287,3 +287,44 @@ func TestNoticesReachListeners(t *testing.T) {
 		t.Fatalf("notices = %v", got)
 	}
 }
+
+type idling struct {
+	*stub.Backend
+	send  func(bool)
+	execs int
+}
+
+func (i *idling) OnIdle(f func(bool))                              { i.send = f }
+func (i *idling) SetIdleStop(context.Context, time.Duration) error { return nil }
+func (i *idling) Exec(ctx context.Context, args []string) (vm.ExecResult, error) {
+	i.execs++
+	return i.Backend.Exec(ctx, args)
+}
+
+func TestSleepingIsShownAndBackgroundChecksDoNotWake(t *testing.T) {
+	b := &idling{Backend: newStub()}
+	c := NewController(b, nil)
+	ctx := context.Background()
+	c.Start(ctx)
+	b.send(true)
+	if !c.Snapshot().Sleeping {
+		t.Fatal("snapshot not sleeping")
+	}
+	c.CheckMemory(ctx)
+	c.MaybeAutoCleanup(ctx)
+	if u, err := c.ProjectUsage(ctx); err != nil || len(u.Projects) != 0 {
+		t.Fatalf("usage = %+v, %v", u, err)
+	}
+	if b.execs != 0 {
+		t.Fatalf("background checks ran %d commands in the sleeping VM", b.execs)
+	}
+	b.send(false)
+	if c.Snapshot().Sleeping {
+		t.Fatal("still sleeping after wake")
+	}
+	b.send(true)
+	c.Stop(ctx)
+	if c.Snapshot().Sleeping {
+		t.Fatal("sleeping after stop")
+	}
+}

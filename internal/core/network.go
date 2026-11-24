@@ -34,8 +34,12 @@ func (c *Controller) SyncNetwork(ctx context.Context) (NetworkChange, error) {
 		return NetworkChange{Network: n}, err
 	}
 	change := NetworkChange{Changed: true, Network: n}
-	res, err := c.backend.Exec(ctx, []string{"docker", "ps", "--quiet"})
-	running := err != nil || res.ExitCode != 0 || strings.TrimSpace(res.Stdout) != ""
+	// An engine stopped for being idle has no containers; asking would start it.
+	running := false
+	if !c.sleeping() {
+		res, err := c.backend.Exec(ctx, []string{"docker", "ps", "--quiet"})
+		running = err != nil || res.ExitCode != 0 || strings.TrimSpace(res.Stdout) != ""
+	}
 	if running {
 		c.notice("プロキシか証明書の設定が変わったので、VM に反映しました。動いているコンテナがあるため再起動していません。" +
 			"docker pull や新しいコンテナで新しい設定を使うには、トレイから再起動してください。")

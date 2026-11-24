@@ -7,6 +7,7 @@ import { initUsage } from "./usage";
 import { initScan } from "./scan";
 import { initCleanup } from "./cleanup";
 import { initContainerCA } from "./containerca";
+import { initIdleStop } from "./idlestop";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
 
@@ -30,7 +31,8 @@ const restartEl = document.querySelector<HTMLButtonElement>("#restart")!;
 
 function show(snapshot: Snapshot): void {
   statusEl.dataset.status = snapshot.status;
-  statusEl.textContent = STATUS_LABELS[snapshot.status];
+  statusEl.textContent =
+    snapshot.status === "running" && snapshot.sleeping ? "休止中(docker コマンドで再開)" : STATUS_LABELS[snapshot.status];
   detailEl.textContent = snapshot.message;
   // Same rules as the tray menu.
   const s = snapshot.status;
@@ -102,7 +104,7 @@ async function init(): Promise<void> {
   fill(snapshot.resources);
   initUsage();
   initScan();
-  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy(), initCleanup(), initContainerCA()]);
+  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy(), initCleanup(), initContainerCA(), initIdleStop()]);
 }
 
 void init();
