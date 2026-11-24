@@ -90,6 +90,17 @@
       </div>
       <p id="cleanup-message" role="status"></p>
 
+      <h2>ボリュームのバックアップ</h2>
+      <p class="hint">ボリュームの中身を tar.gz にして、次のフォルダに保存します: <code id="backup-folder"></code>。データベースなどは、コンテナを止めてからバックアップしてください。復元は、まだないボリュームか、空で使われていないボリュームにだけ行います(上書きはしません)。</p>
+      <p class="controls"><button id="volumes-load" type="button">ボリュームとバックアップを表示</button></p>
+      <div id="volumes-box" hidden>
+        <h3>ボリューム</h3>
+        <ul id="volumes" class="registries"></ul>
+        <h3>バックアップ</h3>
+        <ul id="volume-backups" class="registries"></ul>
+      </div>
+      <p id="volumes-message" role="status"></p>
+
       <h2>WSL との連携</h2>
       <p class="hint">チェックしたディストリの docker CLI から、この VM を使えます(ディストリのファイルのバインドマウントも使えます)。</p>
       <ul id="integrations" class="registries"></ul>

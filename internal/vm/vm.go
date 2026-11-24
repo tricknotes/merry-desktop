@@ -151,6 +151,13 @@ type ContainerCAConfigurer interface {
 	SetContainerCA(ctx context.Context, enabled bool) error
 }
 
+// HostPathMapper is implemented by backends whose VM can read and write
+// host files (I-03).
+type HostPathMapper interface {
+	// VMPath returns where the host path hostPath is in the VM.
+	VMPath(hostPath string) (string, error)
+}
+
 // IdleStopper is implemented by backends that can stop the container engine
 // while nothing uses it, and start it again for the next request from any
 // client (F-06).
