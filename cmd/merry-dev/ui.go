@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/tricknotes/merry-desktop/frontend"
@@ -42,6 +43,9 @@ func ui(ctx context.Context, c *core.Controller, args []string) error {
 		return err
 	}
 	service := appservice.New(c, store, nil)
+	if profile, err := windowsDir("USERPROFILE"); err == nil {
+		service.BackupDir = filepath.Join(profile, "merry-dev", "volume-backups")
+	}
 	dist, err := fs.Sub(frontend.Dist, "dist")
 	if err != nil {
 		return err

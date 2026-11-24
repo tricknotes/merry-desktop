@@ -81,6 +81,12 @@ func main() {
 		}
 	})
 
+	if home, err := os.UserHomeDir(); err == nil {
+		// Not Documents: that folder is often synced (OneDrive), and backups
+		// can be large.
+		service.BackupDir = filepath.Join(home, appinfo.DisplayName, "volume-backups")
+	}
+
 	notifier := notifications.New()
 	// A second launch asks for the settings window; served once it exists.
 	secondLaunch := make(chan struct{}, 1)

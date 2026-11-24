@@ -27,6 +27,8 @@ type Service struct {
 	Settings   *settings.Store
 	// Emit sends an event to the windows. It must not block.
 	Emit func(name string, data any)
+	// BackupDir is the host folder for volume backups (I-03).
+	BackupDir string
 }
 
 // New returns a Service and forwards status changes to emit as EventChanged.

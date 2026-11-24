@@ -8,6 +8,7 @@ import { initScan } from "./scan";
 import { initCleanup } from "./cleanup";
 import { initContainerCA } from "./containerca";
 import { initIdleStop } from "./idlestop";
+import { initVolumes } from "./volumes";
 import type { Resources, Snapshot, VmStatus } from "./types";
 import "./style.css";
 
@@ -104,7 +105,7 @@ async function init(): Promise<void> {
   fill(snapshot.resources);
   initUsage();
   initScan();
-  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy(), initCleanup(), initContainerCA(), initIdleStop()]);
+  await Promise.all([initRegistries(), initIntegrations(), initBuildProxy(), initCleanup(), initContainerCA(), initIdleStop(), initVolumes()]);
 }
 
 void init();
