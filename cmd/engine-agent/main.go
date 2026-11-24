@@ -110,13 +110,19 @@ func serveStdio(args []string) error {
 		Env: env, CABundle: *caBundle, WarnSlowBinds: true,
 		CheckPorts: portChecker(session), Notify: noticeSender(session),
 	}
-	var idle *idleStop
+	// The idle stop also starts an engine that is not running (a previous
+	// agent stopped it); only with --idle-stop does it stop the engine.
+	idle := newIdleStop(*idleAfter, log)
+	idle.start = func(ctx context.Context) error { return startEngine(ctx, *socket) }
+	idle.stop = func(ctx context.Context) error { return stopEngine(ctx, enginePidFile) }
+	idle.runningContainers = func(ctx context.Context) (int, error) { return countRunning(ctx, *socket) }
+	idle.notify = idleNotifier(session)
+	if !engineRunning(enginePidFile) {
+		// Started on the first request. At distro boot the boot command may
+		// be starting it right now; engine-start then only waits for it.
+		idle.state = engineAsleep
+	}
 	if *idleAfter > 0 {
-		idle = newIdleStop(*idleAfter, log)
-		idle.start = func(ctx context.Context) error { return startEngine(ctx, *socket) }
-		idle.stop = func(ctx context.Context) error { return stopEngine(ctx, enginePidFile) }
-		idle.runningContainers = func(ctx context.Context) (int, error) { return countRunning(ctx, *socket) }
-		idle.notify = idleNotifier(session)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go idle.run(ctx)

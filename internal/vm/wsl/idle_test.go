@@ -87,19 +87,39 @@ func TestIdleNoticeAndWakeOnExec(t *testing.T) {
 
 func TestStartStartsAnEngineStoppedByAPreviousAgent(t *testing.T) {
 	f := &fakeRunner{state: "Running", readyIn: 1 << 30}
-	f.handle = func(_ RunOptions, args []string) (Result, bool) {
-		if args[len(args)-1] == engineStart {
-			f.readyIn = f.checks // the engine answers from the next check
-			return Result{}, true
-		}
-		return Result{}, false
-	}
 	b := newTestBackend(t, f)
+	pinged := make(chan string, 1)
+	go func() {
+		// The agent of this Start answers the wake request and the engine runs.
+		for {
+			f.mu.Lock()
+			n := len(f.agents)
+			f.mu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		st, err := f.agents[0].Accept()
+		if err != nil {
+			return
+		}
+		defer st.Close()
+		req, err := http.ReadRequest(bufio.NewReader(st))
+		if err != nil {
+			return
+		}
+		f.mu.Lock()
+		f.readyIn = 0
+		f.mu.Unlock()
+		pinged <- req.URL.Path
+		_, _ = st.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"))
+	}()
 	if err := b.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasSuffix(c, "--exec "+engineStart) }) {
-		t.Fatalf("engine-start not run; calls = %v", f.calls)
+	if p := <-pinged; p != "/_ping" {
+		t.Fatalf("wake request = %q", p)
 	}
 }
 

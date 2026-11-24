@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 )
@@ -67,7 +66,9 @@ func (m *idleStop) acquire(ctx context.Context) error {
 		m.state = engineStarting
 		m.mu.Unlock()
 		m.log.Info("starting the engine for a request")
-		err := m.start(ctx)
+		// Not the request's context: when that client gives up, the others
+		// waiting still need the engine.
+		err := m.start(context.WithoutCancel(ctx))
 		m.mu.Lock()
 		if err != nil {
 			m.state = engineAsleep
@@ -116,6 +117,9 @@ func (m *idleStop) check(ctx context.Context) {
 	m.state = engineStopping
 	m.mu.Unlock()
 
+	// Tell the host first, so that it does not take the stopping engine for
+	// a broken one.
+	m.notify(true)
 	m.log.Info("stopping the idle engine", "idle", m.after)
 	err = m.stop(ctx)
 	m.mu.Lock()
@@ -129,9 +133,8 @@ func (m *idleStop) check(ctx context.Context) {
 	m.mu.Unlock()
 	if err != nil {
 		m.log.Error("stop the engine", "err", err)
-		return
+		m.notify(false)
 	}
-	m.notify(true)
 }
 
 func (m *idleStop) idleLongEnough() bool {
@@ -183,8 +186,10 @@ const (
 func startEngine(ctx context.Context, socket string) error {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, engineStartCommand).CombinedOutput(); err != nil {
-		return fmt.Errorf("%s: %w: %s", engineStartCommand, err, strings.TrimSpace(string(out)))
+	// No output is captured: the script leaves jobs in the background, and a
+	// pipe would make this wait for them. It logs to /var/log/dockerd.log.
+	if err := exec.CommandContext(ctx, engineStartCommand).Run(); err != nil {
+		return fmt.Errorf("%s: %w", engineStartCommand, err)
 	}
 	client := engineClient(socket)
 	for {

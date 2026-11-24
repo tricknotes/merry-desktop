@@ -116,7 +116,7 @@ func TestIdleStopFailureKeepsTheEngineAwake(t *testing.T) {
 	m := newTestIdle(e, &clock)
 	clock = clock.Add(time.Hour)
 	m.check(context.Background())
-	if m.state != engineAwake || len(e.events) != 0 {
+	if m.state != engineAwake || len(e.events) != 2 || !e.events[0] || e.events[1] {
 		t.Fatalf("state = %d, events = %v", m.state, e.events)
 	}
 }

@@ -199,13 +199,6 @@ func (b *Backend) Start(ctx context.Context) error {
 	b.mu.Lock()
 	running := b.keepaliveRunning()
 	b.mu.Unlock()
-	if !running && d.State == stateRunning && !b.engineReady(ctx) {
-		// The distro runs without the engine: a previous agent stopped it for
-		// being idle (F-06). The boot command will not run again; start it.
-		if err := b.mustRun(ctx, RunOptions{}, b.inDistro(engineStart)...); err != nil {
-			return fmt.Errorf("start the engine: %w", err)
-		}
-	}
 	if !running {
 		// Running a command boots the distro; its [boot] command starts dockerd.
 		if err := b.ensureAgent(ctx); err != nil {
@@ -226,6 +219,14 @@ func (b *Backend) Start(ctx context.Context) error {
 		b.integrated = targets
 		b.mu.Unlock()
 		go b.serveControl(session)
+		if d.State == stateRunning && !b.engineReady(ctx) {
+			// The distro runs without the engine: a previous agent stopped it
+			// for being idle (F-06). The boot command does not run again, and
+			// what `wsl --exec` starts ends with it, so the agent starts it.
+			if err := b.wake(ctx); err != nil {
+				return err
+			}
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, b.ReadyTimeout)

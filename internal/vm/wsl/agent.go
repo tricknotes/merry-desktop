@@ -20,9 +20,6 @@ var agentGzip []byte
 
 const agentPath = "/usr/local/bin/engine-agent"
 
-// engineStart starts dockerd unless it runs (also the distro's boot command).
-const engineStart = "/usr/local/sbin/engine-start"
-
 // agentSHA256 is the checksum of the uncompressed agent, which is what
 // sha256sum reports inside the distro.
 var agentSHA256 = func() string {

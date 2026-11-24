@@ -42,3 +42,13 @@ func stopEngine(ctx context.Context, pidFile string) error {
 func alive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
+
+// engineRunning reports whether the process in the engine's pid file runs.
+func engineRunning(pidFile string) bool {
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	return err == nil && pid > 1 && alive(pid)
+}
