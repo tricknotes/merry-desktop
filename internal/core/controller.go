@@ -18,6 +18,9 @@ type Snapshot struct {
 	Resources vm.Resources `json:"resources"`
 	// Message explains an error status in user-facing words. Empty otherwise.
 	Message string `json:"message"`
+	// Sleeping: the VM runs, but its engine was stopped for being idle; the
+	// next docker command starts it again (F-06).
+	Sleeping bool `json:"sleeping"`
 }
 
 // Controller serializes VM operations and tells listeners about status changes.
@@ -59,6 +62,12 @@ func NewController(backend vm.Backend, log *slog.Logger) *Controller {
 	}
 	if n, ok := backend.(vm.Noticer); ok {
 		n.OnNotice(c.notice)
+	}
+	if i, ok := backend.(vm.IdleStopper); ok {
+		i.OnIdle(func(asleep bool) {
+			c.log.Info("engine idle", "asleep", asleep)
+			c.update(func(s *Snapshot) { s.Sleeping = asleep })
+		})
 	}
 	return c
 }
@@ -107,8 +116,17 @@ func (c *Controller) update(change func(*Snapshot)) {
 }
 
 func (c *Controller) setStatus(status vm.Status, message string) {
-	c.update(func(s *Snapshot) { s.Status, s.Message = status, message })
+	c.update(func(s *Snapshot) {
+		s.Status, s.Message = status, message
+		if status != vm.StatusRunning {
+			s.Sleeping = false
+		}
+	})
 }
+
+// sleeping reports whether the engine is stopped for being idle (F-06).
+// Background checks skip it then, so that they do not wake it.
+func (c *Controller) sleeping() bool { return c.Snapshot().Sleeping }
 
 // begin waits until no other operation runs and takes its turn; end gives the turn back.
 func (c *Controller) begin() { c.op.Lock() }

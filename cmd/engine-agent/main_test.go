@@ -37,7 +37,7 @@ func TestServeTranslatesPerClientKind(t *testing.T) {
 
 	hostEnd, agentEnd := net.Pipe()
 	go func() {
-		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", engineapi.Options{}, slog.New(slog.DiscardHandler))
+		_ = serve(mux.Server(agentEnd), sock, "/mnt/wsl/e/distros", engineapi.Options{}, nil, slog.New(slog.DiscardHandler))
 	}()
 	session := mux.Client(hostEnd)
 	defer session.Close()
@@ -80,7 +80,7 @@ func TestServeDistroSocket(t *testing.T) {
 	runDir := filepath.Join(dir, "run")
 	ensured := 0
 	ensure := func(context.Context) error { ensured++; return nil }
-	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", engineapi.Options{Env: []string{"HTTP_PROXY=http://p:3128"}}, ensure, slog.New(slog.DiscardHandler))
+	srv, err := serveDistro(runDir, "Ubuntu", sock, "/mnt/wsl/e/distros", engineapi.Options{Env: []string{"HTTP_PROXY=http://p:3128"}}, ensure, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestServeDistroSocket(t *testing.T) {
 	if ensured != 1 {
 		t.Errorf("mount check ran %d times, want 1", ensured)
 	}
-	if _, err := serveDistro(runDir, "../etc", sock, "", engineapi.Options{}, nil, slog.New(slog.DiscardHandler)); err == nil {
+	if _, err := serveDistro(runDir, "../etc", sock, "", engineapi.Options{}, nil, nil, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("accepted a distro name with a path separator")
 	}
 }

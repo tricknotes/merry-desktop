@@ -19,6 +19,8 @@ export interface Snapshot {
   resources: Resources;
   /** Explains an error status. Empty otherwise. */
   message: string;
+  /** The engine is stopped for being idle; the next docker command starts it. */
+  sleeping: boolean;
 }
 
 /** Native side of the app. */

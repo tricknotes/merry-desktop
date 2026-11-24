@@ -42,6 +42,9 @@ func (b *Backend) agentCommand(distros []string) []string {
 	if b.ContainerCA {
 		args = append(args, "--ca-bundle", vmCABundle)
 	}
+	if b.IdleStop > 0 {
+		args = append(args, "--idle-stop", b.IdleStop.String())
+	}
 	for _, d := range distros {
 		args = append(args, "--distro", d)
 	}

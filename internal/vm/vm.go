@@ -8,6 +8,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // Status is the state of the VM as seen by the user.
@@ -148,6 +149,19 @@ type Provisioner interface {
 // (F-11). Containers that already exist are not changed.
 type ContainerCAConfigurer interface {
 	SetContainerCA(ctx context.Context, enabled bool) error
+}
+
+// IdleStopper is implemented by backends that can stop the container engine
+// while nothing uses it, and start it again for the next request from any
+// client (F-06).
+type IdleStopper interface {
+	// SetIdleStop sets how long the engine may be idle (no running container,
+	// no request) before it is stopped; 0 means never. It applies right away.
+	SetIdleStop(ctx context.Context, after time.Duration) error
+	// OnIdle registers the single receiver of changes: asleep is true when
+	// the engine was stopped for being idle, false when it started again.
+	// It must not block.
+	OnIdle(func(asleep bool))
 }
 
 // NetworkApplier is implemented by backends that can apply changed proxy and

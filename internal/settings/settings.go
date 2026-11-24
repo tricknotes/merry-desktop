@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/tricknotes/merry-desktop/internal/vm"
 )
@@ -29,6 +30,22 @@ type Settings struct {
 	// ContainerCA gives new containers the CA bundle with the host's
 	// certificates (F-11). Off by default: it changes what containers see.
 	ContainerCA bool `json:"containerCA,omitempty"`
+	// IdleStopMinutes is how long the engine may be idle (no running
+	// container, no request) before it is stopped (F-06). nil means
+	// DefaultIdleStopMinutes; 0 means never.
+	IdleStopMinutes *int `json:"idleStopMinutes,omitempty"`
+}
+
+// DefaultIdleStopMinutes is the idle time when the user has not chosen one.
+const DefaultIdleStopMinutes = 10
+
+// IdleStop returns the idle time before the engine is stopped (0: never).
+func (s Settings) IdleStop() time.Duration {
+	m := DefaultIdleStopMinutes
+	if s.IdleStopMinutes != nil {
+		m = max(*s.IdleStopMinutes, 0)
+	}
+	return time.Duration(m) * time.Minute
 }
 
 // AutoCleanupEnabled reports whether the daily cleanup runs.

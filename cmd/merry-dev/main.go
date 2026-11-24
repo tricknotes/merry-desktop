@@ -336,5 +336,8 @@ func devSettings(ctx context.Context, c *core.Controller) (*settings.Store, erro
 			return nil, err
 		}
 	}
+	if err := c.SetIdleStop(ctx, saved.IdleStop()); err != nil {
+		return nil, err
+	}
 	return store, c.ApplySavedIntegrations(ctx, saved.Integrations)
 }

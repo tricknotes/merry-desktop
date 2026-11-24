@@ -33,6 +33,20 @@
       </form>
       <p id="message" role="status"></p>
 
+      <h2>使っていないときの休止</h2>
+      <label>
+        コンテナが動いておらず docker コマンドも使われていない状態が続いたら、エンジンを止める
+        <select id="idle-stop">
+          <option value="0">止めない</option>
+          <option value="5">5 分</option>
+          <option value="10">10 分</option>
+          <option value="30">30 分</option>
+          <option value="60">60 分</option>
+        </select>
+      </label>
+      <p class="hint">止めている間は、エンジンとその周りが使っていたメモリと CPU が空きます。次に docker コマンドを使うと、数秒で自動的に再開します(Windows でも、連携した WSL ディストリでも)。</p>
+      <p id="idle-stop-message" role="status"></p>
+
       <h2>Compose プロジェクトごとの使用量</h2>
       <table id="usage" class="usage" hidden>
         <thead>

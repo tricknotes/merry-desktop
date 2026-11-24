@@ -34,6 +34,10 @@ const refreshInterval = 10 * time.Second
 // (I-07): once a minute.
 const memoryCheckEvery = 6
 
+// sleepingLabel is shown instead of "running" while the engine is stopped for
+// being idle (F-06).
+const sleepingLabel = "休止中(docker コマンドで再開)"
+
 var statusLabels = map[vm.Status]string{
 	vm.StatusStopped:  "停止中",
 	vm.StatusStarting: "起動中",
@@ -157,6 +161,9 @@ func main() {
 
 	refreshTray := func(s core.Snapshot) {
 		label := statusLabels[s.Status]
+		if s.Status == vm.StatusRunning && s.Sleeping {
+			label = sleepingLabel
+		}
 		tray.SetIcon(icons.Tray(s.Status))
 		tooltip := appinfo.DisplayName + ": " + label
 		if s.Message != "" {
@@ -250,6 +257,9 @@ func backgroundLoop(service *appservice.Service, logger *slog.Logger, openSetup 
 			if err := controller.SetContainerCA(ctx, true); err != nil {
 				logger.Warn("container CA", "err", err)
 			}
+		}
+		if err := controller.SetIdleStop(ctx, saved.IdleStop()); err != nil {
+			logger.Warn("idle stop", "err", err)
 		}
 	}
 	if err := controller.LoadResources(ctx); err != nil {

@@ -57,10 +57,10 @@ func (c *Controller) AutoCleanup(ctx context.Context) (int64, error) {
 	return freed, nil
 }
 
-// MaybeAutoCleanup runs AutoCleanup when the VM runs and the last run is at
-// least a day ago. Call it periodically.
+// MaybeAutoCleanup runs AutoCleanup when the engine runs (not stopped for
+// being idle) and the last run is at least a day ago. Call it periodically.
 func (c *Controller) MaybeAutoCleanup(ctx context.Context) {
-	if c.Snapshot().Status != vm.StatusRunning {
+	if c.Snapshot().Status != vm.StatusRunning || c.sleeping() {
 		return
 	}
 	c.mu.Lock()
